@@ -3,7 +3,7 @@ FROM python:3.10-slim
 
 # Устанавливаем зависимости
 WORKDIR /app
-COPY ./app/requirements.txt /app/requirements.txt
+COPY . .
 RUN pip install --no-cache-dir -r requirements.txt
 
 
