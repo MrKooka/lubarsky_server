@@ -47,6 +47,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("YouTubeDownloader")
 
+@app.route('/', methods=['GET'])
+def index():
+     return jsonify({
+        "message":"Hello"}), 200
 
 @app.route('/submit', methods=['GET', 'POST'])
 def submit_video():
