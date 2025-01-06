@@ -10,4 +10,3 @@ services:
       - ./app:/app  # Монтируем локальную папку app в контейнер
     environment:
       - FLASK_ENV=development  # Режим разработки (автоперезагрузка)
-    command: gunicorn -w 4 -b 0.0.0.0:5000 app:convertor_server:app
