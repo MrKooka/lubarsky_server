@@ -23,9 +23,10 @@ Usage:
   python youtube_downloader.py
   Follow the prompts.
 """
-
 import logging
+import csv
 import os
+import uuid
 import subprocess
 import sys
 import datetime
@@ -81,8 +82,7 @@ def progress_hook(d):
     elif d['status'] == 'error':
         logger.error("Error during download!")
 
-
-def download_youtube_video(url: str, download_path: str) -> str:
+def download_youtube_video(url: str, download_path: str) -> dict:
     """
     Download the highest-quality (audio+video) stream of a YouTube video
     using yt-dlp.
@@ -93,7 +93,10 @@ def download_youtube_video(url: str, download_path: str) -> str:
     """
     logger.info(f"Starting video download for URL: {url}")
     logger.debug(f"Download path: {download_path}")
+    
 
+    os.makedirs(download_path, exist_ok=True)
+    
     ydl_opts = {
         'format': 'bv+ba/best',  # best video + best audio, fallback to 'best'
         'outtmpl': os.path.join(download_path, '%(title)s.%(ext)s'),
@@ -102,8 +105,7 @@ def download_youtube_video(url: str, download_path: str) -> str:
         # If you have a cookies file for age-restricted videos:
         # 'cookiefile': '/path/to/cookies.txt',
     }
-
-    os.makedirs(download_path, exist_ok=True)
+    
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
@@ -118,12 +120,14 @@ def download_youtube_video(url: str, download_path: str) -> str:
 
     if 'entries' in result:  # If it's a playlist or multiple videos
         video_info = result['entries'][0]
+
     else:
         video_info = result
 
     downloaded_filename = ydl.prepare_filename(video_info)
+    save_to_csv(file_directory=os.path.dirname(downloaded_filename),title=result['title'],video_id=result['id'],type_="video")
     logger.info(f"Download finished. File saved to: {downloaded_filename}")
-    return downloaded_filename
+    return {"downloaded_filename":downloaded_filename,"videoId":result['id']}
 
 
 def get_file_size_mb(file_path: str) -> float:
@@ -309,10 +313,13 @@ def compress_audio_extreme(
     chosen_format: str,
     chosen_codec: str,
     is_lossless: bool,
+    videoId:str,
     max_size_mb: float = None,
     initial_bitrate_kbps: int = 96,
     min_bitrate_kbps: int = 32,
-    use_vbr: bool = False
+    use_vbr: bool = False,
+    
+
 ) -> str:
     """
     Convert the media to one of the 10 supported audio formats with optional iterative 
@@ -337,7 +344,6 @@ def compress_audio_extreme(
     if os.path.exists(out_file_base):
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         out_file_base = f"{base}_{timestamp}.{chosen_format}"
-
     # Single pass if:
     # 1) It's lossless (FLAC or WAV), or
     # 2) no max_size_mb specified
@@ -463,15 +469,18 @@ def triger_download(url):
     video_url = url
     download_path = "./convertorData/"
     # 3) Скачиваем видео
+    
+   
+
     try:
-        downloaded_file = download_youtube_video(video_url, download_path)
+        videoData = download_youtube_video(video_url, download_path)
+        downloaded_file = videoData['downloaded_filename']
     except Exception as e:
         logger.error(f"Failed to download video. Reason: {e}")
         print("Download failed. Check the log for details.")
+        print("video_url:",video_url,"download_path:",download_path)
         sys.exit(1)
-
     # 4) Вместо выбора (1/2/3) – сразу говорим «3» (convert to audio)
-    choice = '3'
     logger.info("Hardcoded choice = 3 (convert to audio).")
 
     # Вместо запроса формата – жёстко ставим 'ogg' + сопутствующие параметры
@@ -484,8 +493,8 @@ def triger_download(url):
     logger.info("Hardcoded VBR for Opus = True.")
 
     # Вместо запроса max_size – ставим None (т.е. без лимита)
-    max_size_float = None
-    logger.info("Hardcoded max_size = None (no size constraint).")
+    max_size_float = 25
+    logger.info("Hardcoded max_size = 25mb.")
 
     try:
         final_audio = compress_audio_extreme(
@@ -496,7 +505,8 @@ def triger_download(url):
             max_size_mb=max_size_float,
             initial_bitrate_kbps=96,
             min_bitrate_kbps=32,
-            use_vbr=use_vbr
+            use_vbr=use_vbr,
+            videoId=videoData['videoId']
         )
         if final_audio and os.path.exists(final_audio):
             final_size_mb = get_file_size_mb(final_audio)
@@ -517,6 +527,16 @@ def triger_download(url):
     print("\nAll done! Check 'video_downloader.log' for a very detailed record of every step.")
 
     return os.path.abspath(final_audio)
+def save_to_csv(file_directory: str, title: str,video_id:str,type_:str):
 
+    csv_file_path =  os.path.join(file_directory, "name_match.csv")
+    file_exists = os.path.isfile(csv_file_path)
+    logger.info(f"Saving CSV file to: {csv_file_path}",)
+    print(f"Saving CSV file to: {csv_file_path}")
+    with open(csv_file_path, mode='a', newline='', encoding='utf-8') as file:
+        writer = csv.writer(file)
+        if not file_exists:
+            writer.writerow(["file_directory","title","video_id","type"])  # Добавляем заголовок, если файл новый
+        writer.writerow([file_directory,title,video_id,type_])
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
