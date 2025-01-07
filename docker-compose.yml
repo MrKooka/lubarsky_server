@@ -4,9 +4,9 @@ services:
   flask_app:
     build:
       context: .
+      dockerfile: Dockerfile
+    container_name: flask_app
     ports:
       - "5000:5000"
-    volumes:
-      - ./app:/app  # Монтируем локальную папку app в контейнер
     environment:
-      - FLASK_ENV=development  # Режим разработки (автоперезагрузка)
+      - FLASK_ENV=development
