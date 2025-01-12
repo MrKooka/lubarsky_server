@@ -1,20 +1,21 @@
-# Системные файлы
+# System files
 .DS_Store
 Thumbs.db
 
-# Логи
+# Logs
 *.log
 video_downloader.log
-# Временные файлы
+
+# Temporary files
 *.tmp
 *.bak
 
-# Папки окружений Python
+# Python virtual environment
 venv/
 __pycache__/
 
-# Конфиденциальные файлы
+# Confidential files
 .env
-convertorData/
-venv/
+
+# Frontend dependencies
 frontend/node_modules/

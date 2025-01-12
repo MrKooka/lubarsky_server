@@ -56,8 +56,6 @@ def fetch_channel_videos(channel_id, max_results=50):
     
     return video_details
 
-
-
 def fetch_playlist_videos(playlist_id, max_results=50):
     """
     Fetches videos from a given playlist ID using the YouTube Data API.
@@ -205,3 +203,101 @@ def get_channel_playlists(channel_id, max_results=50):
 
     return playlists
 
+def fetch_video_details(video_id):
+    """
+    Fetches detailed information about a YouTube video using its Video ID.
+
+    Args:
+        video_id (str): The unique identifier for the YouTube video.
+
+    Returns:
+        dict: A dictionary containing video details.
+    """
+    youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
+
+    try:
+        request = youtube.videos().list(
+            part='snippet,contentDetails,statistics,status',
+            id=video_id
+        )
+        response = request.execute()
+
+        items = response.get('items')
+        if not items:
+            print(f"No video found with Video ID: {video_id}")
+            return None
+
+        video = items[0]
+
+        # Extracting necessary details
+        video_details = {
+            'video_id': video.get('id'),
+            'title': video['snippet'].get('title'),
+            'description': video['snippet'].get('description'),
+            'published_at': video['snippet'].get('publishedAt'),
+            'channel_id': video['snippet'].get('channelId'),
+            'channel_title': video['snippet'].get('channelTitle'),
+            'category_id': video['snippet'].get('categoryId'),
+            'thumbnail_url': video['snippet']['thumbnails']['high']['url'] if 'high' in video['snippet']['thumbnails'] else None,
+            'tags': video['snippet'].get('tags', []),
+            'duration': video['contentDetails'].get('duration'),
+            'dimension': video['contentDetails'].get('dimension'),
+            'definition': video['contentDetails'].get('definition'),
+            'caption': video['contentDetails'].get('caption'),
+            'licensed_content': video['contentDetails'].get('licensedContent'),
+            'projection': video['contentDetails'].get('projection'),
+            'view_count': video['statistics'].get('viewCount'),
+            'like_count': video['statistics'].get('likeCount'),
+            'dislike_count': video['statistics'].get('dislikeCount'),
+            'favorite_count': video['statistics'].get('favoriteCount'),
+            'comment_count': video['statistics'].get('commentCount'),
+            'privacy_status': video['status'].get('privacyStatus'),
+            'license': video['status'].get('license'),
+            'embeddable': video['status'].get('embeddable'),
+            'public_stats_viewable': video['status'].get('publicStatsViewable'),
+        }
+
+        return video_details
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return None
+
+
+def search_channels(handle, max_results=5):
+    """
+    Searches for YouTube channels matching the provided handle.
+
+    Args:
+        handle (str): The YouTube channel handle (e.g., "@johnnyharris").
+        max_results (int): Maximum number of results to return.
+
+    Returns:
+        list: A list of dictionaries containing channel details.
+    """
+    youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
+    
+    try:
+        request = youtube.search().list(
+            part='snippet',
+            q=handle,
+            type='channel',
+            maxResults=max_results
+        )
+        response = request.execute()
+        
+        channels = []
+        for item in response.get('items', []):
+            channel = {
+                'channel_id': item['id']['channelId'],
+                'title': item['snippet']['title'],
+                'description': item['snippet']['description'],
+                'thumbnail_url': item['snippet']['thumbnails']['high']['url'] if 'high' in item['snippet']['thumbnails'] else None,
+            }
+            channels.append(channel)
+        
+        return channels
+    
+    except Exception as e:
+        print(f"An error occurred while searching channels: {e}")
+        return []

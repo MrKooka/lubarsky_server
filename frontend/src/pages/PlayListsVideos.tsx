@@ -3,6 +3,16 @@ import React, { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import Input from "../components/Input";
 import usePlayListVideos from "../hooks/usePlayListVideos";
+import { Link } from "react-router-dom"; // Import Link from react-router-dom
+import {
+  Button,
+  Card,
+  Spinner,
+  Alert,
+  Container,
+  Row,
+  Col,
+} from "react-bootstrap";
 
 const PlayListsVideos = () => {
   const { playlistId } = useParams<{ playlistId: string }>();
@@ -23,7 +33,7 @@ const PlayListsVideos = () => {
   }, [playlistId]);
 
   return (
-    <div className="container my-4">
+    <Container className="my-4">
       <h1 className="mb-4">PlayLists Videos</h1>
       <Input
         onSubmitChannelId={handlePlaylistIdSubmit}
@@ -33,70 +43,79 @@ const PlayListsVideos = () => {
       {/* Loading State */}
       {loading && (
         <div className="text-center my-4">
-          <div className="spinner-border text-primary" role="status">
+          <Spinner animation="border" variant="primary" role="status">
             <span className="visually-hidden">Loading...</span>
-          </div>
+          </Spinner>
         </div>
       )}
 
       {/* Error State */}
       {error && (
-        <div className="alert alert-danger my-4" role="alert">
+        <Alert variant="danger" className="my-4">
           Error: {error}
-        </div>
+        </Alert>
       )}
 
       {/* Videos Display */}
       {videos && videos.length > 0 && (
-        <div className="row">
+        <Row>
           {videos.map((video) => (
-            <div className="col-md-6 mb-4" key={video.video_id}>
-              <div className="card h-100">
+            <Col md={6} className="mb-4" key={video.video_id}>
+              <Card className="h-100">
                 {/* Video Thumbnail */}
                 {video.thumbnail_url ? (
-                  <img
+                  <Card.Img
                     src={video.thumbnail_url}
-                    className="card-img-top"
                     alt={video.title}
                     style={{ height: "200px", objectFit: "cover" }}
                   />
                 ) : (
                   <div
-                    className="card-img-top bg-secondary d-flex align-items-center justify-content-center"
+                    className="bg-secondary d-flex align-items-center justify-content-center"
                     style={{ height: "200px", color: "#fff" }}
                   >
                     No Image Available
                   </div>
                 )}
 
-                <div className="card-body d-flex flex-column">
+                <Card.Body className="d-flex flex-column">
                   {/* Video Title */}
-                  <h5 className="card-title">{video.title}</h5>
+                  <Card.Title>{video.title}</Card.Title>
 
                   {/* Video Description */}
-                  <p className="card-text">Video Id: {video.video_id}</p>
+                  <Card.Text>Video ID: {video.video_id}</Card.Text>
 
                   {/* Published Date */}
-                  <p className="mt-auto">
+                  <Card.Text>
                     <small className="text-muted">
                       Published at:{" "}
                       {new Date(video.published_at).toLocaleDateString()}
                     </small>
-                  </p>
-                </div>
-              </div>
-            </div>
+                  </Card.Text>
+
+                  {/* Video ID as Link to VideoDetails */}
+                  <Button
+                    as={Link}
+                    to={`/VideoDetails/${video.video_id}`}
+                    variant="primary"
+                    className="mt-auto"
+                  >
+                    View Video Details
+                  </Button>
+                </Card.Body>
+              </Card>
+            </Col>
           ))}
-        </div>
+        </Row>
       )}
 
       {/* No Videos Found */}
       {!loading && !error && currentPlaylistId && videos.length === 0 && (
-        <div className="alert alert-info my-4" role="alert">
+        <Alert variant="info" className="my-4">
           No videos found for this playlist.
-        </div>
+        </Alert>
       )}
-    </div>
+    </Container>
   );
 };
 

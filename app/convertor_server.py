@@ -5,7 +5,7 @@ from flask import Flask, request, jsonify, send_from_directory
 import os
 # from .tasks import triger_download
 from tasks import triger_download
-from youtube_service import fetch_channel_videos, fetch_playlist_videos, fetch_video_comments, get_channel_playlists
+from youtube_service import fetch_channel_videos, fetch_playlist_videos, fetch_video_comments, get_channel_playlists, fetch_video_details,search_channels
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -86,6 +86,29 @@ def fetch_channel_videos_endpoing(channel_id):
     max_results = request.args.get('max_results', default=50, type=int)
     videos = fetch_channel_videos(channel_id, max_results=max_results)
     return jsonify(videos)
+
+@app.route("/youtube/fetch_video_details/<videoId>", methods=['GET'])
+def fetch_video_details_endpoint(videoId):
+    videos_ditails = fetch_video_details(videoId)
+    return jsonify(videos_ditails)
+
+@app.route('/youtube/search_channel', methods=['GET'])
+def search_channel():
+    handle = request.args.get('handle')
+    if not handle:
+        return jsonify({'error': 'Channel handle is required'}), 400
+    channels = search_channels(handle)
+    return jsonify(channels), 200
+
+@app.route('/youtube/transcribe_video/<video_id>', methods=['POST'])
+def transcribe_video(video_id):
+    # Placeholder for transcription logic
+    data = request.get_json()
+    if not data or 'videoId' not in data:
+        return jsonify({'error': 'videoId is required'}), 400
+    # Implement transcription logic here
+    return jsonify({'transcript': 'Transcription service not implemented yet.'}), 200
+
 
 # gunicorn точка входа останется такой же
 if __name__ == '__main__':
