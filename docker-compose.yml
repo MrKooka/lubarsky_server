@@ -8,20 +8,24 @@ services:
     container_name: flask_app
     ports:
       - "5000:5000"
-    environment:
-      - FLASK_ENV=development
-    # Команда запускается та, что в Dockerfile (gunicorn ...)
+    env_file:
+      - .env
+    volumes:
+      - app_data:/app/convertorData
 
   celery_worker:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: celery_worker
-    # Для Celery-воркера нужно переопределить CMD, 
-    # чтобы вместо gunicorn запускался Celery:
     command: >
-      celery -A app.tasks worker --loglevel=INFO
+      celery -A tasks worker --loglevel=INFO
     depends_on:
       - flask_app
-    environment:
-      - FLASK_ENV=development
+    env_file:
+      - .env
+    volumes:
+      - app_data:/app/convertorData
+
+volumes:
+  app_data:

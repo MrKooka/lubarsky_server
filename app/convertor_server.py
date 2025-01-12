@@ -1,9 +1,15 @@
+# /convertor_server.py
 import logging
 import sys
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
+import os
 # from .tasks import triger_download
 from tasks import triger_download
+from youtube_service import fetch_channel_videos, fetch_playlist_videos, fetch_video_comments, get_channel_playlists
+from flask_cors import CORS
+
 app = Flask(__name__)
+CORS(app)
 logger = logging.getLogger("YouTubeDownloader")
 
 
@@ -42,6 +48,44 @@ def task_status(task_id):
         "state": res.state,
         "result": res.result
     })
+
+@app.route('/download_audio/<task_id>', methods=['GET'])
+def download_audio(task_id):
+    from celery_app import celery
+    res = celery.AsyncResult(task_id)
+
+    # Check that task is done
+    if res.state == 'SUCCESS':
+        audio_filepath = res.result  # e.g. /app/convertorData/video_name.ogg
+        if audio_filepath and os.path.exists(audio_filepath):
+            directory = os.path.dirname(audio_filepath)
+            filename = os.path.basename(audio_filepath)
+            # Return the file as an attachment (i.e., "download" in browser)
+            return send_from_directory(directory, filename, as_attachment=True)
+        else:
+            return jsonify({"error": "File not found on server"}), 404
+    else:
+        return jsonify({
+            "error": "Task not in SUCCESS state",
+            "state": res.state
+        }), 400
+
+
+@app.route('/youtube/get_channel_playlists/<channel_id>',methods=['GET'])
+def get_channel_playlists_endpoint(channel_id):
+    playlists = get_channel_playlists(channel_id)
+    return jsonify(playlists)
+
+@app.route('/youtube/fetch_playlist_videos/<playlist_id>',methods=['GET'])
+def fetch_playlist_videos_endpoint(playlist_id):
+    response = fetch_playlist_videos(playlist_id)
+    return jsonify(response)
+
+@app.route('/youtube/fetch_channel_videos/<channel_id>', methods=['GET'])
+def fetch_channel_videos_endpoing(channel_id):
+    max_results = request.args.get('max_results', default=50, type=int)
+    videos = fetch_channel_videos(channel_id, max_results=max_results)
+    return jsonify(videos)
 
 # gunicorn точка входа останется такой же
 if __name__ == '__main__':
