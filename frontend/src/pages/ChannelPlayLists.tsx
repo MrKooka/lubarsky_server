@@ -1,6 +1,4 @@
 // src/pages/ChannelPlayLists.tsx
-
-import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom"; // Import useParams
 import useChannelPlayLists from "../hooks/useChannelPlayLists";
 import {
@@ -78,7 +76,7 @@ const ChannelPlayLists = () => {
 
                   {/* Link to the Playlist's Videos Page */}
                   <Button
-                    as={Link}
+                    as={Link as any}
                     to={`/PlayListsVideos/${playlist.id}`}
                     className="mt-auto"
                     variant="primary"

@@ -1,6 +1,6 @@
 // src/pages/ChannelVideos.tsx
 
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import useFetchChannelVideos from "../hooks/useFetchChannelVideos";
 import {
@@ -16,15 +16,14 @@ import { useInView } from "react-intersection-observer";
 
 const ChannelVideos = () => {
   const { channel_id } = useParams<{ channel_id: string }>(); // Get channel_id from URL
-  const [currentChannelId, setCurrentChannelId] = useState<string | null>(
-    channel_id || null
+  const [currentChannelId, setCurrentChannelId] = useState<string | undefined>(
+    channel_id
   );
-  const { videos, loading, error, hasMore, nextPageToken, loadMore } =
-    useFetchChannelVideos(
-      currentChannelId,
-      10,
-      20 // maxContent
-    );
+  const { videos, loading, error, hasMore, loadMore } = useFetchChannelVideos(
+    currentChannelId,
+    10,
+    20 // maxContent
+  );
 
   const { ref, inView } = useInView({
     threshold: 0,
@@ -95,7 +94,7 @@ const ChannelVideos = () => {
                     </Card.Text>
 
                     <Button
-                      as={Link}
+                      as={Link as any}
                       to={`/VideoDetails/${video.video_id}`}
                       variant="primary"
                       className="mt-auto"
@@ -133,7 +132,7 @@ const ChannelVideos = () => {
                     </Card.Text>
 
                     <Button
-                      as={Link}
+                      as={Link as any}
                       to={`/VideoDetails/${video.video_id}`}
                       variant="primary"
                       className="mt-auto"

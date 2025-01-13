@@ -1,5 +1,3 @@
-// src/hooks/useFetchChannelVideos.ts
-
 import { useState, useEffect, useCallback } from "react";
 
 type Video = {
@@ -32,8 +30,7 @@ export function useFetchChannelVideos(
   const loadMore = useCallback(() => {
     if (!loading && hasMore) {
       // Trigger fetch by updating pageToken
-      // Here, pageToken is already set from previous fetch
-      // So, no action needed. useEffect will handle based on pageToken
+      // Здесь вы можете обновить pageToken, если это необходимо
     }
   }, [loading, hasMore]);
 
@@ -59,8 +56,11 @@ export function useFetchChannelVideos(
         const data = await response.json();
 
         if (isMounted) {
-          setVideos((prevVideos) => [...prevVideos, ...data.videos]);
-          setHasMore(data.hasMore && (prevVideos.length + data.videos.length) < maxContent);
+          setVideos((prevVideos) => {
+            const updatedVideos = [...prevVideos, ...data.videos];
+            setHasMore(data.hasMore && updatedVideos.length < maxContent);
+            return updatedVideos;
+          });
           setPageToken(data.nextPageToken || null);
           setLoading(false);
         }

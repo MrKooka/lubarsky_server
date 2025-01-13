@@ -1,5 +1,5 @@
 // src/pages/PlayListsVideos.tsx
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import Input from "../components/Input";
 import usePlayListVideos from "../hooks/usePlayListVideos";
@@ -95,7 +95,7 @@ const PlayListsVideos = () => {
 
                   {/* Video ID as Link to VideoDetails */}
                   <Button
-                    as={Link}
+                    as={Link as any}
                     to={`/VideoDetails/${video.video_id}`}
                     variant="primary"
                     className="mt-auto"

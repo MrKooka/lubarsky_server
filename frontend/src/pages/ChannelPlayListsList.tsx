@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import useSearchChannels from "../hooks/useSearchChannels";
 import {
@@ -84,7 +84,7 @@ const ChannelPlayListsList = () => {
 
                   {/* Link to the Channel's Playlists Page */}
                   <Button
-                    as={Link}
+                    as={Link as any}
                     to={`/ChannelPlayLists/${channel.channel_id}`} // <-- Go to detail page
                     variant="primary"
                     className="mt-auto"

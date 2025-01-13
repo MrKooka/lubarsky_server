@@ -1,5 +1,4 @@
 // src/App.tsx
-import React from "react";
 import { Routes, Route, Link } from "react-router-dom";
 import FindChannel from "./pages/FindChannel";
 import ChannelPlayListsList from "./pages/ChannelPlayListsList";

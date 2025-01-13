@@ -1,6 +1,6 @@
 // src/pages/FindChannel.tsx
-import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom"; // Import useNavigate
+import { useState } from "react";
+import { useNavigate } from "react-router-dom"; // Import useNavigate
 import Input from "../components/Input";
 import useSearchChannels from "../hooks/useSearchChannels";
 import {
