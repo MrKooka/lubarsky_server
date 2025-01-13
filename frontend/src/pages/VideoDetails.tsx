@@ -45,6 +45,8 @@ const VideoDetails: React.FC = () => {
     const regex =
       /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([^\s&]+)/;
     const match = url.match(regex);
+    console.log(match);
+
     return match ? match[1] : null;
   };
 

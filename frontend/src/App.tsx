@@ -28,6 +28,9 @@ const App = () => {
               <Nav.Link as={Link} to="/ChannelPlayListsList">
                 Channel PlayLists
               </Nav.Link>
+              <Nav.Link as={Link} to="/VideoDetails">
+                Video Details
+              </Nav.Link>
             </Nav>
           </Navbar.Collapse>
         </Container>
@@ -70,6 +73,10 @@ const App = () => {
           path="*"
           element={<p className="text-center mt-5">Page Not Found</p>}
         />
+        {/* Route for Video Details */}
+        <Route path="/VideoDetails" element={<VideoDetails />} />
+        {/* Dynamic Route: Video Details with Video ID */}
+        <Route path="/VideoDetails/:videoId" element={<VideoDetails />} />
       </Routes>
     </>
   );
