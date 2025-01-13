@@ -1,5 +1,6 @@
 // src/hooks/useFetchChannelVideos.ts
-import { useState, useEffect } from "react";
+
+import { useState, useEffect, useCallback } from "react";
 
 type Video = {
   video_id: string;
@@ -8,26 +9,59 @@ type Video = {
   thumbnail_url?: string;
 };
 
-export function useFetchChannelVideos(channelId: string, maxResults: number = 10) {
+interface UseFetchChannelVideosResult {
+  videos: Video[];
+  loading: boolean;
+  error: string | null;
+  hasMore: boolean;
+  nextPageToken: string | null;
+  loadMore: () => void;
+}
+
+export function useFetchChannelVideos(
+  channelId: string | undefined,
+  maxResults: number = 10,
+  maxContent: number = 20
+): UseFetchChannelVideosResult {
   const [videos, setVideos] = useState<Video[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [pageToken, setPageToken] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState<boolean>(true);
+
+  const loadMore = useCallback(() => {
+    if (!loading && hasMore) {
+      // Trigger fetch by updating pageToken
+      // Here, pageToken is already set from previous fetch
+      // So, no action needed. useEffect will handle based on pageToken
+    }
+  }, [loading, hasMore]);
 
   useEffect(() => {
+    if (!channelId) return;
+
     let isMounted = true;
-    
-    async function fetchData() {
+
+    const fetchVideos = async () => {
       try {
         setLoading(true);
         setError(null);
-        const response = await fetch(`http://localhost:5000/youtube/fetch_channel_videos/${channelId}?max_results=${maxResults}`);
+
+        const response = await fetch(
+          `http://localhost:5000/youtube/fetch_channel_videos/${channelId}?max_results=${maxResults}&pageToken=${pageToken || ""}&max_content=${maxContent}`
+        );
+
         if (!response.ok) {
-            
-          throw new Error(`Error: ${response.statusText}`);
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Failed to fetch videos.");
         }
+
         const data = await response.json();
+
         if (isMounted) {
-          setVideos(data);
+          setVideos((prevVideos) => [...prevVideos, ...data.videos]);
+          setHasMore(data.hasMore && (prevVideos.length + data.videos.length) < maxContent);
+          setPageToken(data.nextPageToken || null);
           setLoading(false);
         }
       } catch (err: any) {
@@ -36,15 +70,16 @@ export function useFetchChannelVideos(channelId: string, maxResults: number = 10
           setLoading(false);
         }
       }
-    }
+    };
 
-    fetchData();
+    fetchVideos();
+
     return () => {
       isMounted = false;
     };
-  }, [channelId, maxResults]);
+  }, [channelId, maxResults, pageToken, maxContent]);
 
-  return { videos, loading, error };
+  return { videos, loading, error, hasMore, nextPageToken: pageToken, loadMore };
 }
 
-export default useFetchChannelVideos
+export default useFetchChannelVideos;

@@ -1,8 +1,8 @@
 // src/pages/ChannelPlayLists.tsx
+
 import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom"; // Import Link from react-router-dom
-import Input from "../components/Input";
-import useSearchChannels from "../hooks/useSearchChannels";
+import { useParams, Link } from "react-router-dom"; // Import useParams
+import useChannelPlayLists from "../hooks/useChannelPlayLists";
 import {
   Button,
   Card,
@@ -14,32 +14,20 @@ import {
 } from "react-bootstrap";
 
 const ChannelPlayLists = () => {
-  const [channelHandle, setChannelHandle] = useState<string | null>(null);
-  const { channels, loading, error } = useSearchChannels(channelHandle);
+  const { channel_id } = useParams<{ channel_id: string }>(); // Get channel_id from URL
+  const { playLists, loading, error } = useChannelPlayLists(channel_id, 10);
 
-  const handleChannelLinkSubmit = (submittedLink: string) => {
-    const extractedHandle = extractHandle(submittedLink);
-    if (extractedHandle) {
-      setChannelHandle(extractedHandle);
-    } else {
-      alert("Invalid YouTube Channel URL. Please enter a valid link.");
-    }
-  };
-
-  // Function to extract handle from YouTube channel URL
-  const extractHandle = (url: string): string | null => {
-    const regex = /youtube\.com\/@([A-Za-z0-9_]+)/;
-    const match = url.match(regex);
-    return match ? `@${match[1]}` : null;
-  };
+  if (!channel_id) {
+    return (
+      <Container className="my-4">
+        <Alert variant="danger">Channel ID is missing in the URL.</Alert>
+      </Container>
+    );
+  }
 
   return (
     <Container className="my-4">
       <h1 className="mb-4">Channel PlayLists</h1>
-      <Input
-        onSubmitChannelId={handleChannelLinkSubmit}
-        placeholder="Enter YouTube Channel URL (e.g., https://www.youtube.com/@johnnyharris)"
-      />
 
       {/* Loading State */}
       {loading && (
@@ -53,62 +41,61 @@ const ChannelPlayLists = () => {
       {/* Error State */}
       {error && (
         <Alert variant="danger" className="my-4">
-          {error}
+          Error: {error}
         </Alert>
       )}
 
-      {/* Channels Display */}
-      {channels && channels.length > 0 && (
+      {/* PlayLists Display */}
+      {playLists && playLists.length > 0 && (
         <Row>
-          {channels.map((channel) => (
-            <Col md={4} className="mb-4" key={channel.channel_id}>
+          {playLists.map((playlist) => (
+            <Col md={4} className="mb-4" key={playlist.id}>
               <Card className="h-100">
-                {/* Channel Thumbnail */}
-                {channel.thumbnail_url ? (
-                  <Card.Img
-                    src={channel.thumbnail_url}
-                    alt={channel.title}
+                {/* Playlist Thumbnail */}
+                {playlist.picture ? (
+                  <img
+                    src={playlist.picture}
+                    className="card-img-top"
+                    alt={playlist.title}
                     style={{ height: "180px", objectFit: "cover" }}
                   />
                 ) : (
                   <div
-                    className="bg-secondary d-flex align-items-center justify-content-center"
+                    className="card-img-top bg-secondary d-flex align-items-center justify-content-center"
                     style={{ height: "180px", color: "#fff" }}
                   >
                     No Image Available
                   </div>
                 )}
 
-                <Card.Body className="d-flex flex-column">
-                  {/* Channel Title */}
-                  <Card.Title>{channel.title}</Card.Title>
-                  {/* Channel Description */}
-                  <Card.Text>
-                    {channel.description
-                      ? channel.description.substring(0, 100) + "..."
-                      : "No description available."}
-                  </Card.Text>
+                <div className="card-body d-flex flex-column">
+                  {/* Playlist Title */}
+                  <h5 className="card-title">{playlist.title}</h5>
+                  {/* Playlist ID */}
+                  <p className="card-text">Playlist ID: {playlist.id}</p>
+                  {/* Playlist Description */}
+                  <p className="card-text">{playlist.description}</p>
 
-                  {/* Channel ID as Link to Channel PlayLists */}
+                  {/* Link to the Playlist's Videos Page */}
                   <Button
                     as={Link}
-                    to={`/ChannelPlayLists/${channel.channel_id}`}
-                    variant="primary"
+                    to={`/PlayListsVideos/${playlist.id}`}
                     className="mt-auto"
+                    variant="primary"
                   >
-                    View PlayLists
+                    View Playlist Videos
                   </Button>
-                </Card.Body>
+                </div>
               </Card>
             </Col>
           ))}
         </Row>
       )}
 
-      {/* No Channels Found */}
-      {!loading && !error && channelHandle && channels.length === 0 && (
+      {/* No PlayLists Found */}
+      {!loading && !error && playLists.length === 0 && (
         <Alert variant="info" className="my-4">
-          No channels found matching the provided handle.
+          No playlists found for this channel.
         </Alert>
       )}
     </Container>

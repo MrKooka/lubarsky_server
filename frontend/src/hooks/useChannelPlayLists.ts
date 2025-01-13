@@ -1,4 +1,5 @@
 // src/hooks/useChannelPlayLists.ts
+
 import { useState, useEffect } from "react";
 
 type Playlist = {
@@ -8,7 +9,7 @@ type Playlist = {
   picture?: string;
 };
 
-export function useChannelPlayLists(channelId: string | null, maxResults: number = 10) {
+export function useChannelPlayLists(channelId: string | undefined, maxResults: number = 10) {
   const [playLists, setPlayLists] = useState<Playlist[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,10 +29,11 @@ export function useChannelPlayLists(channelId: string | null, maxResults: number
         setLoading(true);
         setError(null);
         const response = await fetch(
-          `http://127.0.0.1:5000/youtube/get_channel_playlists/${channelId}?max_results=${maxResults}`
+          `http://localhost:5000/youtube/get_channel_playlists/${channelId}?max_results=${maxResults}`
         );
         if (!response.ok) {
-          throw new Error(`Error: ${response.statusText}`);
+          const errData = await response.json();
+          throw new Error(errData.error || "Failed to fetch playlists");
         }
         const data: Playlist[] = await response.json();
         if (isMounted) {
@@ -52,8 +54,7 @@ export function useChannelPlayLists(channelId: string | null, maxResults: number
       isMounted = false;
     };
   }, [channelId, maxResults]);
-  console.log("playLists:", playLists);
-  
+
   return { playLists, loading, error };
 }
 

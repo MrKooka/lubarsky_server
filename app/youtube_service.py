@@ -1,43 +1,66 @@
 from googleapiclient.discovery import build
 import os
 from dotenv import load_dotenv
+from typing import List, Dict, Any
 
 load_dotenv()
 YOUTUBE_API_KEY = os.environ.get('YOUTUBE_API_KEY')
 
 
-def fetch_channel_videos(channel_id, max_results=50):
+def fetch_channel_videos(channel_id: str, max_results: int = 10, page_token: str = None) -> Dict[str, Any]:
     """
-    Fetches videos (with thumbnails) from a channel's "uploads" playlist.
+    Fetches videos from a channel's uploads playlist.
+
+    Args:
+        channel_id (str): The YouTube channel ID.
+        max_results (int, optional): Number of videos per request. Defaults to 10.
+        page_token (str, optional): Token for pagination. Defaults to None.
+
+    Returns:
+        Dict[str, Any]: Dictionary containing videos, hasMore flag, and nextPageToken.
     """
     youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
-    
-    # 1. Get the channel's "uploads" playlist
+
+    # 1. Get the channel's uploads playlist ID
     channel_response = youtube.channels().list(
         part='contentDetails',
         id=channel_id
     ).execute()
-    
-    if not channel_response.get('items'):
-        return []  # or handle error if channel not found
 
-    uploads_playlist_id = channel_response['items'][0]['contentDetails']['relatedPlaylists']['uploads']
-    
-    # 2. Fetch videos from that playlist
+    if not channel_response.get('items'):
+        return {
+            'videos': [],
+            'hasMore': False,
+            'nextPageToken': None,
+            'message': 'Channel not found.'
+        }
+
+    uploads_playlist_id = channel_response['items'][0]['contentDetails']['relatedPlaylists'].get('uploads')
+
+    if not uploads_playlist_id:
+        return {
+            'videos': [],
+            'hasMore': False,
+            'nextPageToken': None,
+            'message': 'Uploads playlist not found for this channel.'
+        }
+
+    # 2. Fetch videos from the uploads playlist
     videos_response = youtube.playlistItems().list(
         part='snippet',
         playlistId=uploads_playlist_id,
-        maxResults=max_results
+        maxResults=max_results,
+        pageToken=page_token
     ).execute()
-    
+
     video_items = videos_response.get('items', [])
     video_details = []
-    
+
     for item in video_items:
         snippet = item['snippet']
         resource_id = snippet.get('resourceId', {})
         video_id = resource_id.get('videoId', '')
-        
+
         # Fallback logic for thumbnails
         thumbnails = snippet.get('thumbnails', {})
         thumbnail_url = None
@@ -53,8 +76,16 @@ def fetch_channel_videos(channel_id, max_results=50):
             'published_at': snippet.get('publishedAt', ''),
             'thumbnail_url': thumbnail_url
         })
-    
-    return video_details
+
+    # Check if there are more pages
+    next_page_token = videos_response.get('nextPageToken', None)
+    has_more = next_page_token is not None
+
+    return {
+        'videos': video_details,
+        'hasMore': has_more,
+        'nextPageToken': next_page_token
+    }
 
 def fetch_playlist_videos(playlist_id, max_results=50):
     """
