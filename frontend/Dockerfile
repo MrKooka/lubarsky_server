@@ -32,4 +32,4 @@ COPY --from=build /app/dist ./dist
 EXPOSE 5000
 
 # Запуск приложения с помощью serve, слушая на всех интерфейсах
-CMD ["serve", "-s", "dist", "-l", "0.0.0.0:5000"]
+CMD ["serve", "-s", "dist", "--listen", "0.0.0.0:5000"]
