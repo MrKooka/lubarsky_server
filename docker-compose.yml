@@ -26,6 +26,21 @@ services:
       - .env
     volumes:
       - app_data:/app/convertorData
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - flask_app
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
 
 volumes:
   app_data:
