@@ -1,0 +1,60 @@
+# docker-compose.app.yml
+version: "3.8"
+
+services:
+  flask_app:
+    build:
+      context: .
+      dockerfile: Dockerfile  # Укажите путь к вашему Flask Dockerfile
+    container_name: flask_app
+    env_file:
+      - .env
+    volumes:
+      - app_data:/app/convertorData
+    networks:
+      - traefik_network
+      - app_network
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile  # Укажите путь к вашему Celery Dockerfile
+    container_name: celery_worker
+    command: >
+      celery -A tasks worker --loglevel=INFO
+    depends_on:
+      - flask_app
+    env_file:
+      - .env
+    volumes:
+      - app_data:/app/convertorData
+    networks:
+      - traefik_network
+      - app_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.frontend.rule=Host(`intplab.com`, `www.intplab.com`)
+      - traefik.http.routers.frontend.entrypoints=websecure
+      - traefik.http.routers.frontend.tls=true
+      - traefik.http.routers.frontend.tls.certresolver=mytlschallenge
+      - traefik.http.services.frontend.loadbalancer.server.port=5000  # Порт, на котором работает serve внутри контейнера
+      - traefik.http.routers.frontend.middlewares=frontend-headers
+      # Добавьте дополнительные middleware, если необходимо
+    networks:
+      - traefik_network
+      - app_network
+
+networks:
+  traefik_network:
+    external: true
+  app_network:
+    driver: bridge
+
+volumes:
+  app_data:

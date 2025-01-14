@@ -1,34 +1,35 @@
-# frontend/Dockerfile
-
 # Stage 1: Build the React app
 FROM node:20-alpine AS build
 
-# Set working directory
+# Установка рабочей директории
 WORKDIR /app
 
-# Copy package.json and package-lock.json
+# Копирование package.json и package-lock.json
 COPY package.json package-lock.json ./
 
-# Install dependencies
+# Установка зависимостей
 RUN npm install --silent
 
-# Copy the rest of the application code
+# Копирование остального кода приложения
 COPY . .
 
-# Build the React app
+# Сборка React-приложения
 RUN npm run build
 
-# Stage 2: Serve the React app with Nginx
-FROM nginx:stable-alpine
+# Stage 2: Serve the React app with serve
+FROM node:20-alpine
 
-# Copy the build output to Nginx's html directory
-COPY --from=build /app/dist /usr/share/nginx/html
+# Установка serve глобально
+RUN npm install -g serve
 
-# Copy custom Nginx configuration if needed
-# COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Установка рабочей директории
+WORKDIR /app
 
-# Expose port 80
-EXPOSE 80
+# Копирование сборки из предыдущего этапа
+COPY --from=build /app/dist ./dist
 
-# Start Nginx server
-CMD ["nginx", "-g", "daemon off;"]
+# Экспонирование порта 5000 (можно выбрать другой, если нужно)
+EXPOSE 5000
+
+# Запуск приложения с помощью serve
+CMD ["serve", "-s", "dist", "-l", "5000"]
