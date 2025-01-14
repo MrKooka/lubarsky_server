@@ -44,8 +44,6 @@ services:
       - traefik.http.routers.frontend.tls=true
       - traefik.http.routers.frontend.tls.certresolver=mytlschallenge
       - traefik.http.services.frontend.loadbalancer.server.port=5000  # Порт, на котором работает serve внутри контейнера
-      - traefik.http.routers.frontend.middlewares=frontend-headers
-      # Добавьте дополнительные middleware, если необходимо
     networks:
       - traefik_network
       - app_network
