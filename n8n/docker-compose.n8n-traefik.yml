@@ -1,0 +1,56 @@
+services:
+  traefik:
+    image: "traefik:v2.9"  # Укажите версию Traefik
+    restart: always
+    command:
+      - "--api=true"
+      - "--api.insecure=true"  # В продакшене лучше отключить или защитить Dashboard
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.mytlschallenge.acme.tlschallenge=true"
+      - "--certificatesresolvers.mytlschallenge.acme.email=${SSL_EMAIL}"
+      - "--certificatesresolvers.mytlschallenge.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - traefik_data:/letsencrypt
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - traefik_network
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    restart: always
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.n8n.rule=Host(`n8n.intplab.com`)
+      - traefik.http.routers.n8n.entrypoints=websecure
+      - traefik.http.routers.n8n.tls=true
+      - traefik.http.routers.n8n.tls.certresolver=mytlschallenge
+      - traefik.http.services.n8n.loadbalancer.server.port=5678
+    environment:
+      - N8N_HOST=n8n.intplab.com
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - NODE_ENV=production
+      - WEBHOOK_URL=https://n8n.intplab.com/
+      - GENERIC_TIMEZONE=America/Los_Angeles
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - traefik_network
+
+volumes:
+  traefik_data:
+    external: true
+  n8n_data:
+    external: true
+
+networks:
+  traefik_network:
+    external: true
