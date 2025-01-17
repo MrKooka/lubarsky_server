@@ -29,7 +29,7 @@ export function useChannelPlayLists(channelId: string | undefined, maxResults: n
         setLoading(true);
         setError(null);
         const response = await fetch(
-          `http://localhost:5000/youtube/get_channel_playlists/${channelId}?max_results=${maxResults}`
+          `/api/youtube/get_channel_playlists/${channelId}?max_results=${maxResults}`
         );
         if (!response.ok) {
           const errData = await response.json();

@@ -39,7 +39,7 @@ export function usePlayListVideos(
         setLoading(true);
         setError(null);
         const response = await fetch(
-          `http://127.0.0.1:5000/youtube/fetch_playlist_videos/${playlistId}?max_results=${maxResults}`
+          `/api/youtube/fetch_playlist_videos/${playlistId}?max_results=${maxResults}`
         );
         if (!response.ok) {
           throw new Error(`Error: ${response.statusText}`);

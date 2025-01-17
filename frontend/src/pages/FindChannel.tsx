@@ -38,7 +38,7 @@ const FindChannel = () => {
     try {
       // Fetch playlists for the channel to check if any exist
       const response = await fetch(
-        `http://localhost:5000/youtube/get_channel_playlists/${channel_id}?max_results=1`
+        `/api/youtube/get_channel_playlists/${channel_id}?max_results=1`
       );
       if (!response.ok) {
         throw new Error("Failed to fetch playlists.");

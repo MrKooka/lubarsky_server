@@ -45,7 +45,7 @@ export function useFetchChannelVideos(
         setError(null);
 
         const response = await fetch(
-          `http://localhost:5000/youtube/fetch_channel_videos/${channelId}?max_results=${maxResults}&pageToken=${pageToken || ""}&max_content=${maxContent}`
+          `/api/youtube/fetch_channel_videos/${channelId}?max_results=${maxResults}&pageToken=${pageToken || ""}&max_content=${maxContent}`
         );
 
         if (!response.ok) {

@@ -31,7 +31,7 @@ const useSearchChannels = (handle: string | null): UseSearchChannelsResult => {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`http://127.0.0.1:5000/youtube/search_channel?handle=${encodeURIComponent(handle)}`);
+        const response = await fetch(`/api/youtube/search_channel?handle=${encodeURIComponent(handle)}`);
         if (!response.ok) {
           const errData = await response.json();
           throw new Error(errData.error || "Failed to fetch channels");

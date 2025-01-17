@@ -51,7 +51,7 @@ const useFetchVideoDetails = (videoId: string | null): UseFetchVideoDetailsResul
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`http://127.0.0.1:5000/youtube/fetch_video_details/${videoId}`);
+        const response = await fetch(`/api/youtube/fetch_video_details/${videoId}`);
         if (!response.ok) {
           throw new Error(`Error: ${response.statusText}`);
         }

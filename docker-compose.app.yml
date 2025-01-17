@@ -11,7 +11,26 @@ services:
     networks:
       - traefik_network
       - app_network
+    labels:
+      - traefik.enable=true
 
+      # Роутер: принимает только те запросы, что приходят на intplab.com и путь начинается с /api
+      - traefik.http.routers.flask.rule=Host(`intplab.com`) && PathPrefix(`/api`)
+
+      # Пробрасываем на HTTPS (websecure) с сертификатом
+      - traefik.http.routers.flask.entrypoints=websecure
+      - traefik.http.routers.flask.tls=true
+      - traefik.http.routers.flask.tls.certresolver=mytlschallenge
+      - traefik.docker.network=traefik_network
+ 
+      # Настраиваем сервис: контейнер слушает порт 5000 (Gunicorn/Flask)
+      - traefik.http.services.flask.loadbalancer.server.port=5000
+
+      #   (Дополнительно) StripPrefix, если хотите, чтобы во Flask маршруты оставались "/youtube/search_channel"
+      # а не "/api/youtube/search_channel".
+      # Иначе, без этой настройки, Flask будет видеть путь как "/api/youtube/search_channel".
+      - traefik.http.middlewares.flask-strip.stripPrefix.prefixes=/api
+      - traefik.http.routers.flask.middlewares=flask-strip
   celery_worker:
     build:
       context: .
