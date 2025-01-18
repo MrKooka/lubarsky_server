@@ -105,8 +105,9 @@ def download_youtube_video(url: str, download_path: str) -> dict:
 
     downloaded_filename = ydl.prepare_filename(video_info)
     save_to_csv(file_directory=os.path.dirname(downloaded_filename),title=result['title'],video_id=result['id'],type_="video")
-    logger.info(f"Download finished. File saved to: {downloaded_filename}")
-    return {"downloaded_filename":downloaded_filename,"videoId":result['id']}
+    absolute_path = os.path.abspath(downloaded_filename)
+    logger.info(f"Download finished. File saved to: {absolute_path}")
+    return {"downloaded_filename":absolute_path,"videoId":result['id']}
 
 
 def get_file_size_mb(file_path: str) -> float:

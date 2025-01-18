@@ -58,7 +58,7 @@ const VideoDetails: React.FC = () => {
     setTranscript(null);
     try {
       const response = await fetch(
-        `http://127.0.0.1:5000/youtube/transcribe_video/${currentVideoId}`,
+        `/api/youtube/transcribe_video/${currentVideoId}`,
         {
           method: "POST",
           headers: {

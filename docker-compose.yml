@@ -26,7 +26,7 @@ services:
     env_file:
       - .env
     volumes:
-      - app_data:/app/convertorData
+      - ./app/convertorData:/app/convertorData  
     networks:
       - app_network
     ports:
@@ -52,7 +52,7 @@ services:
     env_file:
       - .env
     volumes:
-      - app_data:/app/convertorData
+      - ./app/convertorData:/app/convertorData 
     networks:
       - app_network
 networks:
