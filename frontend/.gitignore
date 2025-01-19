@@ -23,3 +23,10 @@ dist-ssr
 *.sln
 *.sw?
 issues/
+frontend/dist/
+frontend/.turbo/
+frontend/.parcel-cache/
+frontend/.eslintcache
+frontend/node_modules/
+frontend/*.log
+frontend/.vite/

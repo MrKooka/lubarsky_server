@@ -19,3 +19,20 @@ __pycache__/
 
 # Frontend dependencies
 frontend/node_modules/
+alembic/__pycache__/
+alembic/versions/__pycache__/
+alembic/versions/*.pyc
+app/__pycache__/
+app/models/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+postgres_data/
+celerybeat-schedule
+app/convertorData/*.ogg
+app/convertorData/*.webm
+app/convertorData/*.csv
+docker-compose.override.yml
+.dockerignore
+*.log
+video_downloader.log
