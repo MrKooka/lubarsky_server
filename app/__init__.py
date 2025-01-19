@@ -1,3 +1,4 @@
+# ./app/__init__.py
 from .models import db  
 import os
 from dotenv import load_dotenv

@@ -14,10 +14,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
 
 # Copy the entire 'app' folder into the container
-COPY app/ /app/
+COPY app/ /app/app/
 
 # Expose port 5000 for Flask
 EXPOSE 5000
 
 # By default, run Gunicorn (for the Flask app)
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "convertor_server:app"]
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "app.convertor_server:app"]

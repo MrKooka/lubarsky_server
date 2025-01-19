@@ -4,21 +4,27 @@ import sys
 from flask import Flask, request, jsonify, send_from_directory
 import os
 # from .tasks import triger_download
-from tasks import triger_download
-from youtube_service import fetch_channel_videos, fetch_playlist_videos, fetch_video_comments, get_channel_playlists, fetch_video_details,search_channels
+from app.tasks import triger_download,transcribe_audio_task
+from app.youtube_service import fetch_channel_videos, fetch_playlist_videos, fetch_video_comments, get_channel_playlists, fetch_video_details,search_channels
 from flask_cors import CORS
+from app import SessionLocal
+from celery import chain
 
 app = Flask(__name__)
 CORS(app)
 logger = logging.getLogger("YouTubeDownloader")
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 
 
 @app.route('/', methods=['GET'])
 def index():
     return jsonify({"message": "Hello"}), 200
 
-@app.route('/submit', methods=['GET', 'POST'])
-def submit_video():
+@app.route('/transcript', methods=['GET', 'POST'])
+def transcript_video():
     if request.method == 'GET':
         video_url = request.args.get("video_url")
     else:  # POST
@@ -27,13 +33,16 @@ def submit_video():
 
     if not video_url:
         return jsonify({"error": "No URL provided"}), 400
+    
+    workflow = chain(
+        triger_download.s(video_url),
+        transcribe_audio_task.s() 
+    )
+    chain_result = workflow.apply_async()
 
-    # Запускаем задачу в фоне
-    task = triger_download.delay(video_url)
-    # Возвращаем клиенту ID задачи, чтобы при желании он мог проверить статус
     return jsonify({
         "message": f"URL {video_url} submitted successfully!",
-        "task_id": task.id
+        "task_id": chain_result.id
     }), 200
 
 @app.route('/youtube/search_channel', methods=['GET'])
@@ -89,7 +98,7 @@ def fetch_channel_videos_by_url():
 
 @app.route('/task_status/<task_id>', methods=['GET'])
 def task_status(task_id):
-    from celery_app import celery
+    from app.celery_app import celery
     res = celery.AsyncResult(task_id)
     # res.state вернёт 'PENDING', 'STARTED', 'SUCCESS', 'FAILURE' ...
     # res.result вернёт то, что вернула ваша задача (или Exception при FAIL)
@@ -101,7 +110,7 @@ def task_status(task_id):
 
 @app.route('/download_audio/<task_id>', methods=['GET'])
 def download_audio(task_id):
-    from celery_app import celery
+    from app.celery_app import celery
     res = celery.AsyncResult(task_id)
 
     # Check that task is done

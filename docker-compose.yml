@@ -46,7 +46,7 @@ services:
       context: .
     container_name: celery_worker
     command: >
-      celery -A tasks worker --loglevel=INFO
+      celery -A app.celery_app.celery worker --loglevel=INFO
     depends_on:
       - flask_app
     env_file:
@@ -55,6 +55,22 @@ services:
       - ./app/convertorData:/app/convertorData 
     networks:
       - app_network
+  db:
+    image: postgres:15
+    container_name: db_postgres
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+    networks:
+      - app_network
+    ports:
+      - "5432:5432"  # при необходимости доступ с хоста
+
 networks:
   app_network:
     driver: bridge
@@ -62,4 +78,4 @@ networks:
 volumes:
   n8n_data:
   app_data:
-
+  postgres_data:  # Именованный том (точнее bind-монтаж папки ./postgres_data)

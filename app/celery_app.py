@@ -35,3 +35,4 @@ celery.conf.task_default_queue = 'celery'
 celery.conf.task_default_exchange = 'celery'
 celery.conf.task_default_exchange_type = 'direct'
 celery.conf.task_default_routing_key = 'celery'
+celery.autodiscover_tasks(['app'])
