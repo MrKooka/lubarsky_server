@@ -9,6 +9,8 @@ from app.youtube_service import fetch_channel_videos, fetch_playlist_videos, fet
 from flask_cors import CORS
 from app import SessionLocal
 from celery import chain
+from celery.result import AsyncResult
+from app.celery_app import celery
 
 app = Flask(__name__)
 CORS(app)
@@ -45,6 +47,26 @@ def transcript_video():
         "task_id": chain_result.id
     }), 200
 
+@app.route("/task_status/<task_id>", methods=["GET"])
+def get_transcription(task_id):
+    # создаём объект результата на основе ID
+    res = AsyncResult(task_id, app=celery)
+
+    # проверяем статус
+    if res.state == 'PENDING':
+        # задача либо ещё не запустилась, либо нет такого id
+        return jsonify({"status": "PENDING"})
+    elif res.state == 'PROGRESS':
+        # задача идёт, можно вернуть проценты, которые вы залогировали в meta
+        return jsonify({"status": "PROGRESS", "meta": res.info})
+    elif res.state == 'SUCCESS':
+        # когда задача закончилась, в res.result будет итоговый return
+        # который вернул ваш transcribe_audio_task
+        return jsonify({"status": "SUCCESS", "result": res.result})
+    else:
+        # возможны варианты: FAILURE, REVOKED и т.д.
+        return jsonify({"status": res.state, "info": str(res.info)})
+    
 @app.route('/youtube/search_channel', methods=['GET'])
 def search_channel():
     handle = request.args.get('handle')
@@ -96,17 +118,17 @@ def fetch_channel_videos_by_url():
 
     return jsonify(result), 200
 
-@app.route('/task_status/<task_id>', methods=['GET'])
-def task_status(task_id):
-    from app.celery_app import celery
-    res = celery.AsyncResult(task_id)
-    # res.state вернёт 'PENDING', 'STARTED', 'SUCCESS', 'FAILURE' ...
-    # res.result вернёт то, что вернула ваша задача (или Exception при FAIL)
-    return jsonify({
-        "task_id": task_id,
-        "state": res.state,
-        "result": res.result
-    })
+# @app.route('/task_status/<task_id>', methods=['GET'])
+# def task_status(task_id):
+#     from app.celery_app import celery
+#     res = celery.AsyncResult(task_id)
+#     # res.state вернёт 'PENDING', 'STARTED', 'SUCCESS', 'FAILURE' ...
+#     # res.result вернёт то, что вернула ваша задача (или Exception при FAIL)
+#     return jsonify({
+#         "task_id": task_id,
+#         "state": res.state,
+#         "result": res.result
+#     })
 
 @app.route('/download_audio/<task_id>', methods=['GET'])
 def download_audio(task_id):

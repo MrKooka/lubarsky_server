@@ -5,7 +5,10 @@ from app.convertor import download_youtube_video, compress_audio_extreme,get_fil
 import logging
 import os
 import sys
-from openai_service import transcribe_audio
+from app.openai_service import transcribe_audio
+import json
+from app import SessionLocal
+from app.models.models import Transcript
 logging.basicConfig(
     level=logging.DEBUG,  # Capture all logs: DEBUG, INFO, WARNING, ERROR, CRITICAL
     format='[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s',
@@ -22,6 +25,29 @@ def transcribe_audio_task(self, download_result):
     audio_path = download_result["audio_file_path"]
     video_id  = download_result["videoId"]
     raw_transcription = transcribe_audio(audio_path)
+
+    words_list = []
+    for w in raw_transcription.words:
+        words_list.append({"start": w.start, "end": w.end, "word": w.word})
+    
+    session = SessionLocal()
+    try:
+        transcript = session.query(Transcript).filter_by(video_id=video_id).first()
+        if not transcript:
+            transcript = Transcript(video_id=video_id)
+            session.add(transcript)
+        
+        transcript.transcript = raw_transcription.text
+        transcript.raw_json = json.dumps(words_list, ensure_ascii=False)
+        
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error saving transcript: {e}")
+        raise
+    finally:
+        session.close()
+
     return {"transcription":raw_transcription.text,"videoId":video_id}
 
 

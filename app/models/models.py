@@ -20,6 +20,7 @@ class Transcript(Base):
 
     video_id = Column(String(255), primary_key=True, nullable=False)
     transcript = Column(Text, nullable=True)
+    raw_json = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     words = relationship('TranscriptionWord', back_populates='transcript', cascade="all, delete-orphan")
 

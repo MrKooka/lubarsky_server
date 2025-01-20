@@ -9,7 +9,8 @@ load_dotenv()
 
 user = os.environ.get("POSTGRES_USER")
 password = os.environ.get("POSTGRES_PASSWORD")
-host = os.environ.get("DB_HOST", "localhost")
+debug = os.environ.get("DEBUG")
+host = os.environ.get("DB_HOST")
 port = os.environ.get("DB_PORT")
 dbatabase = os.environ.get("POSTGRES_DB")
 # DATABASE_URL = f"postgresql://{os.environ.get('POSTGRES_USER')}:{os.environ.get('POSTGRES_PASSWORD')}@{os.environ.get('DB_HOST', 'localhost')}:5432/{os.environ.get('POSTGRES_DB')}"
