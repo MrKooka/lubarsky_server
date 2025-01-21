@@ -122,7 +122,7 @@ const VideoDetails: React.FC = () => {
       // Например: "https://www.youtube.com/watch?v=XXXX"
       const fullUrl = `https://www.youtube.com/watch?v=${currentVideoId}`;
 
-      const response = await fetch("http://localhost:5500/transcript", {
+      const response = await fetch("http://localhost:5000/transcript", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ video_url: fullUrl }),
@@ -175,7 +175,7 @@ const VideoDetails: React.FC = () => {
       if (trigerDownloadTaskId) {
         try {
           const res = await fetch(
-            `http://localhost:5500/task_status/${trigerDownloadTaskId}`
+            `http://localhost:5000/task_status/${trigerDownloadTaskId}`
           );
           if (!res.ok) {
             throw new Error(`Статус скачивания: ${res.statusText}`);
@@ -208,7 +208,7 @@ const VideoDetails: React.FC = () => {
       if (transcribeAudioTaskId) {
         try {
           const res = await fetch(
-            `http://localhost:5500/task_status/${transcribeAudioTaskId}`
+            `http://localhost:5000/task_status/${transcribeAudioTaskId}`
           );
           if (!res.ok) {
             throw new Error(`Статус транскрибации: ${res.statusText}`);
