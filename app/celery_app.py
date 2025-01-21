@@ -23,6 +23,7 @@ celery.conf.update(
     accept_content=['json'],
     timezone='America/Los_Angeles',
     enable_utc=True,
+    broker_connection_retry_on_startup=True
 )
 
 # ВАЖНО: при rpc-бэкенде нужно хранить результаты,

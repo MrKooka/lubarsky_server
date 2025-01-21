@@ -13,7 +13,8 @@ from app.models.models import db
 config = context.config
 user = os.environ.get("POSTGRES_USER")
 password = os.environ.get("POSTGRES_PASSWORD")
-host = os.environ.get("DB_HOST", "localhost")
+# host = os.environ.get("DB_HOST", "localhost")
+host = "localhost"
 port = os.environ.get("DB_PORT")
 dbatabase = os.environ.get("POSTGRES_DB")
 

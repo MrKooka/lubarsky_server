@@ -5,13 +5,22 @@ from flask import Flask, request, jsonify, send_from_directory
 import os
 # from .tasks import triger_download
 from app.tasks import triger_download,transcribe_audio_task
-from app.youtube_service import fetch_channel_videos, fetch_playlist_videos, fetch_video_comments, get_channel_playlists, fetch_video_details,search_channels
+from app.youtube_service import (
+    fetch_channel_videos, 
+    fetch_playlist_videos, 
+    fetch_video_comments, 
+    get_channel_playlists, 
+    fetch_video_details,
+    search_channels,
+    get_youtube_video_id_from_url
+)
 from flask_cors import CORS
 from app import SessionLocal
 from celery import chain
 from celery.result import AsyncResult
 from app.celery_app import celery
-
+from app.models.models import Transcript
+from app.services.database_service import get_session
 app = Flask(__name__)
 CORS(app)
 logger = logging.getLogger("YouTubeDownloader")
@@ -27,6 +36,7 @@ def index():
 
 @app.route('/transcript', methods=['GET', 'POST'])
 def transcript_video():
+    # session = SessionLocal()
     if request.method == 'GET':
         video_url = request.args.get("video_url")
     else:  # POST
@@ -36,15 +46,45 @@ def transcript_video():
     if not video_url:
         return jsonify({"error": "No URL provided"}), 400
     
+    video_id = get_youtube_video_id_from_url(video_url)
+    
+    if not video_id:
+        return jsonify({"error": "Invalid YouTube URL or Video ID not found"}), 400
+
+    
+    with get_session() as session:
+        try:
+            transcript = session.query(Transcript).filter_by(video_id=video_id).first()
+            
+            if not transcript:
+                transcript = Transcript(video_id=video_id)
+                session.add(transcript)
+            else:
+                
+                if transcript and transcript.status == "done":
+                    return jsonify({"transcript": transcript.transcript,"videoId":transcript.video_id,"created_at":transcript.created_at})
+                elif transcript and transcript.status != 'done':
+                    return jsonify({"status": transcript.status,"videoId":transcript.video_id,"created_at":transcript.created_at})
+            
+        except Exception as e:
+            logger.error(f"Error saving transcript: {e}")
+            raise
+   
+    
+
     workflow = chain(
-        triger_download.s(video_url),
+        triger_download.s(video_id),
         transcribe_audio_task.s() 
     )
+    
     chain_result = workflow.apply_async()
-
+    triger_download_task_id = chain_result.parent.id 
+    transcribe_audio_task_id = chain_result.id
+    
     return jsonify({
         "message": f"URL {video_url} submitted successfully!",
-        "task_id": chain_result.id
+        "triger_download_task_id": triger_download_task_id,
+        "transcribe_audio_task_id":transcribe_audio_task_id
     }), 200
 
 @app.route("/task_status/<task_id>", methods=["GET"])

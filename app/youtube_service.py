@@ -2,9 +2,26 @@ from googleapiclient.discovery import build
 import os
 from dotenv import load_dotenv
 from typing import List, Dict, Any
+import re 
 
 load_dotenv()
 YOUTUBE_API_KEY = os.environ.get('YOUTUBE_API_KEY')
+
+
+def get_youtube_video_id_from_url(url):
+    regex = re.compile(
+        r'(https?://)?'
+        r'(www\.)?'  
+        r'(youtube|youtu|youtube-nocookie)\.'  
+        r'(com|be)/'  
+        r'(watch\?v=|embed/|v/|.+\?v=)?'  
+        r'(?P<id>[A-Za-z0-9\-=_]{11})'  
+    )
+    match = regex.search(url)
+    if match:
+        return match.group("id")
+    else:
+        return None
 
 
 def fetch_channel_videos(channel_id: str, max_results: int = 10, page_token: str = None) -> Dict[str, Any]:

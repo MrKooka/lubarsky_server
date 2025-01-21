@@ -36,3 +36,4 @@ docker-compose.override.yml
 .dockerignore
 *.log
 video_downloader.log
+definitions.json

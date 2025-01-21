@@ -16,7 +16,39 @@ services:
       - app_network
     ports:
       - "8000:5678"  # Expose n8n on host port 8000
+  # RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3.8-management
+    container_name: rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
+      - RABBITMQ_LOAD_DEFINITIONS=/etc/rabbitmq/definitions.json
+    networks:
+      - app_network
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./definitions.json:/etc/rabbitmq/definitions.json
+    ports:
+      - "15672:15672" # RabbitMQ Management UI
+      - "5672:5672"   # AMQP
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  # Redis
+  redis:
+    image: redis
+    container_name: redis
+    command: redis-server --save 60 1 --requirepass ${REDIS_PASSWORD} --loglevel warning
+    networks:
+      - app_network
 
+    volumes:
+      - redis_data:/data
+    #ports:
+     # - "6379:6379"
   # Flask App (API)
   flask_app:
     build:
@@ -48,7 +80,10 @@ services:
     command: >
       celery -A app.celery_app.celery worker --loglevel=INFO
     depends_on:
-      - flask_app
+      flask_app:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
     env_file:
       - .env
     volumes:
@@ -78,4 +113,6 @@ networks:
 volumes:
   n8n_data:
   app_data:
-  postgres_data:  # Именованный том (точнее bind-монтаж папки ./postgres_data)
+  postgres_data:
+  rabbitmq_data:
+  redis_data:

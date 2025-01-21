@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from .services.logging_service import setup_logger
 
 load_dotenv()
 
@@ -17,3 +18,4 @@ dbatabase = os.environ.get("POSTGRES_DB")
 DATABASE_URL = f"postgresql://{user}:{password}@{host}:{port}/{dbatabase}"
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+logger = setup_logger("app")

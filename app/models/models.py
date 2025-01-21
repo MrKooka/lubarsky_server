@@ -1,4 +1,4 @@
-# app/models.py
+# app/models/models.py
 from sqlalchemy import (
     Column,
     String,
@@ -11,7 +11,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
-
+from app.services.logging_service import setup_logger
+logger = setup_logger("app.models.models")
 
 Base = declarative_base()
 
@@ -22,8 +23,29 @@ class Transcript(Base):
     transcript = Column(Text, nullable=True)
     raw_json = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    status = Column(String(50), default='pending')  
+    error = Column(String(255),nullable=True)  
     words = relationship('TranscriptionWord', back_populates='transcript', cascade="all, delete-orphan")
-
+    
+    def update_status(self, new_status, session):
+        """
+        statuses: done, pending, downloading, transcribing, error
+        """
+        try:
+            self.status = new_status
+            session.add(self)
+            session.commit()
+        except Exception as e:
+            logger.error(f"Transcript.update_status error {e}")
+            raise
+    def update_error(self, error, session):
+        try:
+            self.error = error
+            session.add(self)
+            session.commit()
+        except Exception as e:
+            logger.error(f"Transcript.update_error error {e}")
+            raise
 
 class TranscriptionWord(Base):
     __tablename__ = 'transcription_words'
