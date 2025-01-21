@@ -30,8 +30,8 @@ def transcribe_audio_task(self, download_result):
         
     update_celery_task_state(
         task=self, 
-        state="transcribing",
-        meta={"step": "start_transcribing", "percent": 90} 
+        state="PROGRESS",
+        meta={"step": "transcribing", "percent": 90} 
     )
 
     raw_transcription = transcribe_audio(audio_path)
@@ -68,7 +68,7 @@ def transcribe_audio_task(self, download_result):
     
     update_celery_task_state(
         task=self, 
-        state="done",
+        state="SUCCESS",
         meta={"step": "done", "percent": 100} 
     )
 
@@ -84,7 +84,7 @@ def triger_download(self, video_id):
 
     update_celery_task_state(
         task=self, 
-        state="downloading",
+        state="PROGRESS",
         meta={"step": "downloading", "percent": 10} 
     )
 
@@ -126,7 +126,7 @@ def triger_download(self, video_id):
     
     update_celery_task_state(
         task=self, 
-        state="compress_audio",
+        state="PROGRESS",
         meta={"step": "compress_audio", "percent": 50} 
     )
     
