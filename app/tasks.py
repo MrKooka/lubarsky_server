@@ -85,7 +85,7 @@ def triger_download(self, video_id):
     update_celery_task_state(
         task=self, 
         state="downloading",
-        meta={"step": "downloading", "percent": 20} 
+        meta={"step": "downloading", "percent": 10} 
     )
 
     with session as sess:
@@ -127,7 +127,7 @@ def triger_download(self, video_id):
     update_celery_task_state(
         task=self, 
         state="compress_audio",
-        meta={"step": "compress_audio_extreme", "percent": 50} 
+        meta={"step": "compress_audio", "percent": 50} 
     )
     
     with session as sess:

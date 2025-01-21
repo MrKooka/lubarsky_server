@@ -29,7 +29,7 @@ class Transcript(Base):
     
     def update_status(self, new_status, session):
         """
-        statuses: done, pending, downloading, transcribing, error
+        statuses: done, downloading, transcribing, error
         """
         try:
             self.status = new_status

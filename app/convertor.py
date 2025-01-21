@@ -1,5 +1,5 @@
-#/tasks.py
 #!/usr/bin/env python3
+#/app/convertor.py
 """
 1) Download a YouTube video using yt-dlp.
 2) Optionally convert it to:
@@ -24,14 +24,17 @@ Usage:
   python youtube_downloader.py
   Follow the prompts.
 """
+
 import logging
 import os
 import subprocess
 import sys
 import datetime
 import yt_dlp
-# from .celery_app import celery 
 
+# ------------------------------------------------------------------------------
+# Configure Logging
+# ------------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.DEBUG,  # Capture all logs: DEBUG, INFO, WARNING, ERROR, CRITICAL
     format='[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s',
@@ -41,6 +44,7 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("YouTubeDownloader")
+
 
 def progress_hook(d):
     """
@@ -56,7 +60,8 @@ def progress_hook(d):
     elif d['status'] == 'error':
         logger.error("Error during download!")
 
-def download_youtube_video(url: str, download_path: str) -> dict:
+
+def download_youtube_video(url: str, download_path: str) -> str:
     """
     Download the highest-quality (audio+video) stream of a YouTube video
     using yt-dlp.
@@ -67,10 +72,7 @@ def download_youtube_video(url: str, download_path: str) -> dict:
     """
     logger.info(f"Starting video download for URL: {url}")
     logger.debug(f"Download path: {download_path}")
-    
 
-    os.makedirs(download_path, exist_ok=True)
-    
     ydl_opts = {
         'format': 'bv+ba/best',  # best video + best audio, fallback to 'best'
         'outtmpl': os.path.join(download_path, '%(title)s.%(ext)s'),
@@ -79,7 +81,8 @@ def download_youtube_video(url: str, download_path: str) -> dict:
         # If you have a cookies file for age-restricted videos:
         # 'cookiefile': '/path/to/cookies.txt',
     }
-    
+
+    os.makedirs(download_path, exist_ok=True)
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
@@ -94,14 +97,12 @@ def download_youtube_video(url: str, download_path: str) -> dict:
 
     if 'entries' in result:  # If it's a playlist or multiple videos
         video_info = result['entries'][0]
-
     else:
         video_info = result
 
     downloaded_filename = ydl.prepare_filename(video_info)
-    absolute_path = os.path.abspath(    downloaded_filename)
-    logger.info(f"Download finished. File saved to: {absolute_path}")
-    return {"downloaded_filename":absolute_path,"videoId":result['id']}
+    logger.info(f"Download finished. File saved to: {downloaded_filename}")
+    return downloaded_filename
 
 
 def get_file_size_mb(file_path: str) -> float:
@@ -136,7 +137,93 @@ def ffprobe_duration(input_file: str) -> float:
         return 0.0
 
 
+# A dictionary to list the 10 supported formats and short explanations:
+SUPPORTED_AUDIO_FORMATS = {
+    'flac': {
+        'desc': "FLAC (lossless, larger size, no quality loss)",
+        'codec': "flac",
+        'lossless': True
+    },
+    'm4a': {
+        'desc': "M4A (AAC). Good quality, smaller size than MP3. Requires libfdk_aac for best results.",
+        'codec': "libfdk_aac",  # fallback to 'aac' if libfdk not available
+        'lossless': False
+    },
+    'mp3': {
+        'desc': "MP3 (older standard, decent quality, bigger than AAC/Opus).",
+        'codec': "libmp3lame",
+        'lossless': False
+    },
+    'mp4': {
+        'desc': "MP4 container (usually AAC for audio-only). Similar to M4A.",
+        'codec': "libfdk_aac",
+        'lossless': False
+    },
+    'mpeg': {
+        'desc': "MPEG container (older format, typically MP2). Usually bigger size.",
+        'codec': "mp2",
+        'lossless': False
+    },
+    'mpga': {
+        'desc': "MPGA (MPEG-1/2 Audio), similar to MP3, older standard.",
+        'codec': "libmp3lame",
+        'lossless': False
+    },
+    'oga': {
+        'desc': "OGA (Ogg Audio), can contain Vorbis/Opus. Usually smaller size.",
+        'codec': "libopus",  # we'll choose Opus for smaller size
+        'lossless': False
+    },
+    'ogg': {
+        'desc': "OGG container (often Vorbis or Opus). Very good for minimal size (Opus).",
+        'codec': "libopus",
+        'lossless': False
+    },
+    'wav': {
+        'desc': "WAV (uncompressed PCM). Huge size, no quality loss.",
+        'codec': "pcm_s16le",  # or 'copy' if you want the raw PCM
+        'lossless': True
+    },
+    'webm': {
+        'desc': "WebM (commonly uses Opus). Very good for minimal size with Opus.",
+        'codec': "libopus",
+        'lossless': False
+    },
+}
 
+
+def prompt_for_audio_format() -> (str, str, bool):
+    """
+    Prompt the user to choose one of the 10 supported audio formats, 
+    showing short explanations about which ones yield minimal size vs. bigger size.
+    
+    :return: (chosen_format, recommended_codec, is_lossless)
+    """
+    print("\nChoose an audio format from the supported list:")
+    formats_list = list(SUPPORTED_AUDIO_FORMATS.keys())
+    for i, f in enumerate(formats_list, start=1):
+        info = SUPPORTED_AUDIO_FORMATS[f]
+        print(f"  {i}. {f.upper()} - {info['desc']}")
+
+    choice = None
+    while True:
+        try:
+            pick = int(input(f"Enter your choice (1..{len(formats_list)}): ").strip())
+            if 1 <= pick <= len(formats_list):
+                choice = formats_list[pick - 1]
+                break
+            else:
+                print(f"Please enter a valid number from 1 to {len(formats_list)}.")
+        except ValueError:
+            print("Invalid input, please enter a valid integer.")
+
+    chosen_info = SUPPORTED_AUDIO_FORMATS[choice]
+    chosen_format = choice  # e.g. 'ogg'
+    chosen_codec = chosen_info['codec']  # e.g. 'libopus'
+    is_lossless = chosen_info['lossless']
+    
+    logger.info(f"User chose {chosen_format.upper()} -> {chosen_info['desc']}")
+    return chosen_format, chosen_codec, is_lossless
 
 
 def build_ffmpeg_audio_command(
@@ -201,13 +288,10 @@ def compress_audio_extreme(
     chosen_format: str,
     chosen_codec: str,
     is_lossless: bool,
-    videoId:str,
     max_size_mb: float = None,
     initial_bitrate_kbps: int = 96,
     min_bitrate_kbps: int = 32,
-    use_vbr: bool = False,
-    
-
+    use_vbr: bool = False
 ) -> str:
     """
     Convert the media to one of the 10 supported audio formats with optional iterative 
@@ -232,6 +316,7 @@ def compress_audio_extreme(
     if os.path.exists(out_file_base):
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         out_file_base = f"{base}_{timestamp}.{chosen_format}"
+
     # Single pass if:
     # 1) It's lossless (FLAC or WAV), or
     # 2) no max_size_mb specified
@@ -351,3 +436,103 @@ def convert_video(input_file: str, output_ext: str) -> str:
         f"({final_size_mb:.2f} MB)"
     )
     return output_file
+
+
+def main():
+    logger.info("Script started. Prompting user for input.")
+    print("Welcome to the YouTube Downloader & Audio Converter!\n")
+
+    # 1) Prompt for the YouTube URL
+    video_url = input("Please enter the YouTube video URL: ").strip()
+
+    # 2) Prompt for download directory
+    download_path = input("Enter download directory (or press Enter for current folder): ").strip()
+    if not download_path:
+        download_path = os.getcwd()
+
+    # 3) Download
+    try:
+        downloaded_file = download_youtube_video(video_url, download_path)
+    except Exception as e:
+        logger.error(f"Failed to download video. Reason: {e}")
+        print("Download failed. Check the log for details.")
+        sys.exit(1)
+
+    # 4) Ask user about conversion
+    print("\nSelect an operation:")
+    print("1. No conversion (keep original file)")
+    print("2. Convert to another video format (e.g. mkv, avi, etc.)")
+    print("3. Convert to one of the 10 supported audio formats")
+    choice = input("Enter your choice (1/2/3): ").strip()
+
+    if choice == '1':
+        logger.info("User chose no conversion. Exiting.")
+        print("Video downloaded successfully, no further action.")
+        sys.exit(0)
+
+    elif choice == '2':
+        ext = input("Enter desired video extension (e.g., mp4, mkv, avi): ").lower().strip()
+        try:
+            new_file = convert_video(downloaded_file, ext)
+            print(f"Video converted successfully to: {new_file}")
+        except RuntimeError:
+            print("Video conversion failed. Check log for details.")
+        sys.exit(0)
+
+    elif choice == '3':
+        # Prompt user for one of the 10 allowed audio formats
+        chosen_format, chosen_codec, is_lossless = prompt_for_audio_format()
+
+        # If using Opus (e.g. 'ogg', 'webm'), we can ask about VBR
+        use_vbr = False
+        if chosen_codec == "libopus":
+            ask_vbr = input("Enable variable bitrate (VBR) for Opus? (y/n): ").lower().strip()
+            if ask_vbr in ['y', 'yes']:
+                use_vbr = True
+                logger.info("User enabled VBR for Opus.")
+
+        # Prompt for optional max size
+        max_size = input(
+            "Enter a maximum file size in MB (e.g. '25') to do iterative compression, "
+            "or press Enter to skip: "
+        ).strip()
+
+        max_size_float = None
+        if max_size:
+            try:
+                max_size_float = float(max_size)
+            except ValueError:
+                logger.warning("Invalid max size input. Skipping size constraint.")
+
+        try:
+            final_audio = compress_audio_extreme(
+                input_file=downloaded_file,
+                chosen_format=chosen_format,
+                chosen_codec=chosen_codec,
+                is_lossless=is_lossless,
+                max_size_mb=max_size_float,
+                initial_bitrate_kbps=96,
+                min_bitrate_kbps=32,
+                use_vbr=use_vbr
+            )
+            if final_audio and os.path.exists(final_audio):
+                final_size_mb = get_file_size_mb(final_audio)
+                print(
+                    f"\nAudio compressed successfully to: {final_audio} "
+                    f"({final_size_mb:.2f} MB)."
+                )
+                logger.info(f"Final audio file: {final_audio} ({final_size_mb:.2f} MB)")
+            else:
+                print(
+                    "\nAudio compression did not produce a final file. "
+                    "Check the logs for details."
+                )
+        except RuntimeError:
+            print("Audio conversion failed. Check log for details.")
+
+    logger.info("Script finished.")
+    print("\nAll done! Check 'video_downloader.log' for a very detailed record of every step.")
+
+
+if __name__ == "__main__":
+    main()
