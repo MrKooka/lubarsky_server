@@ -96,7 +96,7 @@ def triger_download(self, video_id):
         )
 
     try:
-        videoData = download_youtube_video(video_url, download_path)
+        downloaded_file = download_youtube_video(video_url, download_path)
     except Exception as e:
         logger.exception(f"Failed to download video. Reason: {e}")
         try:
