@@ -7,7 +7,11 @@ import PlayListsVideos from "./pages/PlayListsVideos";
 import VideoDetails from "./pages/VideoDetails";
 import HomePage from "./pages/HomePage";
 import ChannelVideos from "./pages/ChannelVideos";
+import Login from "./pages/Login";
+import Profile from "./pages/Profile";
+import Register from "./pages/Register";
 import { Navbar, Nav, Container } from "react-bootstrap";
+import PrivateRoute from "./components/PrivateRoute";
 
 const App = () => {
   return (
@@ -29,6 +33,15 @@ const App = () => {
               </Nav.Link>
               <Nav.Link as={Link} to="/VideoDetails">
                 Video Details
+              </Nav.Link>
+              <Nav.Link as={Link} to="/profile">
+                Profile
+              </Nav.Link>
+              <Nav.Link as={Link} to="/login">
+                Sing In
+              </Nav.Link>
+              <Nav.Link as={Link} to="/register">
+                Sing Up
               </Nav.Link>
             </Nav>
           </Navbar.Collapse>
@@ -76,6 +89,12 @@ const App = () => {
         <Route path="/VideoDetails" element={<VideoDetails />} />
         {/* Dynamic Route: Video Details with Video ID */}
         <Route path="/VideoDetails/:videoId" element={<VideoDetails />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route element={<PrivateRoute />}>
+          <Route path="/profile" element={<Profile />} />
+          {/* Добавьте другие защищённые маршруты здесь */}
+        </Route>
       </Routes>
     </>
   );

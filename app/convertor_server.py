@@ -19,10 +19,19 @@ from app import SessionLocal
 from celery import chain
 from celery.result import AsyncResult
 from app.celery_app import celery
-from app.models.models import Transcript
+from app.models.models import Transcript, User
 from app.services.database_service import get_session
+from flask_jwt_extended import JWTManager
+from dotenv import load_dotenv
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
+
+load_dotenv()
+
 app = Flask(__name__)
 CORS(app)
+app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY")
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = False  
+jwt = JWTManager(app)
 logger = logging.getLogger("YouTubeDownloader")
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
@@ -116,47 +125,47 @@ def search_channel():
     return jsonify(channels), 200
 
 
-@app.route('/youtube/fetch_channel_videos_by_url', methods=['GET'])
-def fetch_channel_videos_by_url():
-    """
-    Endpoint to fetch videos from a YouTube channel using the full channel URL.
+# @app.route('/youtube/fetch_channel_videos_by_url', methods=['GET'])
+# def fetch_channel_videos_by_url():
+#     """
+#     Endpoint to fetch videos from a YouTube channel using the full channel URL.
 
-    Query Parameters:
-        channel_url (str): The full YouTube channel URL (e.g., https://www.youtube.com/@AIAritiv).
-        max_results (int, optional): Number of videos per request. Defaults to 10.
-        max_content (int, optional): Maximum number of videos to fetch. Defaults to 20.
+#     Query Parameters:
+#         channel_url (str): The full YouTube channel URL (e.g., https://www.youtube.com/@AIAritiv).
+#         max_results (int, optional): Number of videos per request. Defaults to 10.
+#         max_content (int, optional): Maximum number of videos to fetch. Defaults to 20.
 
-    Returns:
-        JSON response containing videos, hasMore flag, and nextPageToken.
-    """
-    channel_url = request.args.get('channel_url', default=None, type=str)
-    max_results = request.args.get('max_results', default=10, type=int)
-    max_content = request.args.get('max_content', default=20, type=int)
+#     Returns:
+#         JSON response containing videos, hasMore flag, and nextPageToken.
+#     """
+#     channel_url = request.args.get('channel_url', default=None, type=str)
+#     max_results = request.args.get('max_results', default=10, type=int)
+#     max_content = request.args.get('max_content', default=20, type=int)
 
-    if not channel_url:
-        return jsonify({'error': 'channel_url parameter is required.'}), 400
+#     if not channel_url:
+#         return jsonify({'error': 'channel_url parameter is required.'}), 400
 
-    try:
-        # Extract channel handle
-        channel_handle = extract_channel_id_from_url(channel_url)
-    except ValueError as ve:
-        return jsonify({'error': str(ve)}), 400
+#     try:
+#         # Extract channel handle
+#         channel_handle = extract_channel_id_from_url(channel_url)
+#     except ValueError as ve:
+#         return jsonify({'error': str(ve)}), 400
 
-    # Search for the channel to get channel_id
-    channels = search_channels(channel_handle, max_results=1)
-    if not channels:
-        return jsonify({'error': 'Channel not found.'}), 404
+#     # Search for the channel to get channel_id
+#     channels = search_channels(channel_handle, max_results=1)
+#     if not channels:
+#         return jsonify({'error': 'Channel not found.'}), 404
 
-    channel_id = channels[0]['channel_id']
+#     channel_id = channels[0]['channel_id']
 
-    # Fetch videos using channel_id
-    result = fetch_channel_videos(channel_id, max_results, page_token=None, max_content=max_content)
+#     # Fetch videos using channel_id
+#     result = fetch_channel_videos(channel_id, max_results, page_token=None, max_content=max_content)
 
-    # Handle error messages
-    if 'message' in result:
-        return jsonify({'error': result['message']}), 404
+#     # Handle error messages
+#     if 'message' in result:
+#         return jsonify({'error': result['message']}), 404
 
-    return jsonify(result), 200
+#     return jsonify(result), 200
 
 # @app.route('/task_status/<task_id>', methods=['GET'])
 # def task_status(task_id):
@@ -222,7 +231,55 @@ def transcribe_video(video_id):
         return jsonify({'error': 'videoId is required'}), 400
     # Implement transcription logic here
     return jsonify({'transcript': 'Transcription service not implemented yet.'}), 200
-    
+
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    username = data.get('username', None)
+    password = data.get('password', None)
+
+    if not username or not password:
+        return jsonify({"msg": "Missing username or password"}), 400
+
+    with get_session() as session:
+        existing_user = session.query(User).filter_by(username=username).first()
+        if existing_user:
+            return jsonify({"msg": "Username already exists"}), 409
+
+        new_user = User(username=username)
+        new_user.set_password(password)
+        session.add(new_user)
+
+        return jsonify({"msg": "User created successfully"}), 201
+        
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    username = data.get('username', None)
+    password = data.get('password', None)
+
+    if not username or not password:
+        return jsonify({"msg": "Missing username or password"}), 400
+
+    with get_session() as session:
+        user = session.query(User).filter_by(username=username).first()
+        if not user or not user.check_password(password):
+            return jsonify({"msg": "Bad username or password"}), 401
+
+        access_token = create_access_token(identity=str(user.id))
+        return jsonify(access_token=access_token), 200
+
+
+@app.route('/protected', methods=['GET'])
+@jwt_required()
+def protected():
+    current_user_id = get_jwt_identity()
+    with get_session() as session:
+        user = session.query(User).get(current_user_id)
+        if not user:
+            return jsonify({"msg": "User not found"}), 404
+        return jsonify({"username": user.username}), 200
+
 # gunicorn точка входа останется такой же
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
