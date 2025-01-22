@@ -99,7 +99,7 @@ def triger_download(self, video_id):
         videoData = download_youtube_video(video_url, download_path)
         downloaded_file = videoData['downloaded_filename']
     except Exception as e:
-        logger.error(f"Failed to download video. Reason: {e}")
+        logger.exception(f"Failed to download video. Reason: {e}")
         try:
             with get_session() as session:
                 transcript = session.query(Transcript).filter_by(video_id=video_id).first()
