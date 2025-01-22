@@ -13,6 +13,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install FFmpeg
 RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
 
+COPY alembic.ini /app/
+COPY alembic/ /app/alembic/
+
 # Copy the entire 'app' folder into the container
 COPY app/ /app/app/
 
