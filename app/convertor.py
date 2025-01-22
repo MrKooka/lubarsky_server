@@ -291,7 +291,7 @@ def compress_audio_extreme(
     max_size_mb: float = None,
     initial_bitrate_kbps: int = 96,
     min_bitrate_kbps: int = 32,
-    use_vbr: bool = False
+    use_vbr: bool = False,
 ) -> str:
     """
     Convert the media to one of the 10 supported audio formats with optional iterative 

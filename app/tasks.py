@@ -147,7 +147,6 @@ def triger_download(self, video_id):
             initial_bitrate_kbps=96,
             min_bitrate_kbps=32,
             use_vbr=use_vbr,
-            videoId=video_id
         )
         if final_audio and os.path.exists(final_audio):
             final_size_mb = get_file_size_mb(final_audio)
