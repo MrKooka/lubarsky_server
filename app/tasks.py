@@ -97,7 +97,6 @@ def triger_download(self, video_id):
 
     try:
         videoData = download_youtube_video(video_url, download_path)
-        downloaded_file = videoData['downloaded_filename']
     except Exception as e:
         logger.exception(f"Failed to download video. Reason: {e}")
         try:
@@ -148,7 +147,7 @@ def triger_download(self, video_id):
             initial_bitrate_kbps=96,
             min_bitrate_kbps=32,
             use_vbr=use_vbr,
-            videoId=videoData['videoId']
+            videoId=video_id
         )
         if final_audio and os.path.exists(final_audio):
             final_size_mb = get_file_size_mb(final_audio)
@@ -168,5 +167,5 @@ def triger_download(self, video_id):
     logger.info("Script finished.")
     logger.info("\nAll done! Check 'video_downloader.log' for a very detailed record of every step.")
     
-    return {"audio_file_path":os.path.abspath(final_audio),"videoId":videoData['videoId']}
+    return {"audio_file_path":os.path.abspath(final_audio),"videoId":video_id}
 
