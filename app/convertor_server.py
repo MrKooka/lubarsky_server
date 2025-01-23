@@ -1,4 +1,6 @@
 # /convertor_server.py
+import json
+from dateutil import parser
 import logging
 import sys
 from flask import Flask, request, jsonify, send_from_directory
@@ -19,12 +21,11 @@ from app import SessionLocal
 from celery import chain
 from celery.result import AsyncResult
 from app.celery_app import celery
-from app.models.models import Transcript, User
+from app.models.models import Transcript, User, UserTranscript
 from app.services.database_service import get_session
 from flask_jwt_extended import JWTManager
 from dotenv import load_dotenv
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-
 load_dotenv()
 
 app = Flask(__name__)
@@ -44,10 +45,13 @@ def index():
     return jsonify({"message": "Hello"}), 200
 
 @app.route('/transcript', methods=['GET', 'POST'])
+@jwt_required()
 def transcript_video():
-    # session = SessionLocal()
+    user_id = get_jwt_identity()
+    # serialize_object(request.get_json(), "endpoint-transcript-request.pkl")
     if request.method == 'GET':
         video_url = request.args.get("video_url")
+        data = {}  
     else:  # POST
         data = request.json
         video_url = data.get("video_url")
@@ -56,44 +60,122 @@ def transcript_video():
         return jsonify({"error": "No URL provided"}), 400
     
     video_id = get_youtube_video_id_from_url(video_url)
-    
     if not video_id:
         return jsonify({"error": "Invalid YouTube URL or Video ID not found"}), 400
 
-    
     with get_session() as session:
         try:
             transcript = session.query(Transcript).filter_by(video_id=video_id).first()
             
+            # Если такой записи ещё нет - создаём и заполняем поля
             if not transcript:
+                logger.debug("transcript not found, creating a new one.")
                 transcript = Transcript(video_id=video_id)
-                session.add(transcript)
-            else:
+                transcript.title = data.get('title')
+                transcript.description = data.get('description')
+                published_at_str = data.get('published_at')
+                if published_at_str:
+                    try:
+                        transcript.published_at = parser.parse(published_at_str)
+                    except Exception as e:
+                        logger.warning(f"Cannot parse published_at: {e}")
                 
-                if transcript and transcript.status == "done":
-                    return jsonify({"transcript": transcript.transcript,"videoId":transcript.video_id,"created_at":transcript.created_at})
-                elif transcript and transcript.status != 'done':
-                    return jsonify({"status": transcript.status,"videoId":transcript.video_id,"created_at":transcript.created_at})
+                transcript.channel_id = data.get('channel_id')
+                transcript.channel_title = data.get('channel_title')
+                transcript.category_id = data.get('category_id')
+                transcript.thumbnail_url = data.get('thumbnail_url')
+                
+                # tags - храним как JSON-строку (или любой другой удобный формат)
+                tags = data.get('tags')
+                if tags and isinstance(tags, list):
+                    transcript.tags = json.dumps(tags, ensure_ascii=False)
+                
+                transcript.duration = data.get('duration')
+                transcript.dimension = data.get('dimension')
+                transcript.definition = data.get('definition')
+                
+                # caption может приходить как 'true'/'false' (строка) или булево
+                # Возьмём за правило, что 'true'/'True' = True, иначе False
+                caption_value = data.get('caption')
+                transcript.caption = str(caption_value).lower() == 'true'
+
+                # licensed_content, embeddable, public_stats_viewable
+                # по условию могут быть уже булевы, но на всякий случай приводим
+                transcript.licensed_content = bool(data.get('licensed_content'))
+                transcript.embeddable = bool(data.get('embeddable'))
+                transcript.public_stats_viewable = bool(data.get('public_stats_viewable'))
+                transcript.projection = data.get('projection')
+
+                # Статистические поля часто приходят в строках, приведём к int
+                view_count = data.get('view_count')
+                transcript.view_count = int(view_count) if view_count is not None else None
+
+                like_count = data.get('like_count')
+                transcript.like_count = int(like_count) if like_count is not None else None
+
+                dislike_count = data.get('dislike_count')
+                transcript.dislike_count = int(dislike_count) if dislike_count is not None else None
+
+                favorite_count = data.get('favorite_count')
+                transcript.favorite_count = int(favorite_count) if favorite_count is not None else None
+
+                comment_count = data.get('comment_count')
+                transcript.comment_count = int(comment_count) if comment_count is not None else None
+
+                transcript.privacy_status = data.get('privacy_status')
+                transcript.license = data.get('license')
+
+                # Можно сразу выставить статус 'pending' или оставить по умолчанию
+                transcript.status = 'pending'
+                transcript.user_id = user_id
+                # Добавляем запись в сессию
+                session.add(transcript)
             
+            else:
+                logger.debug(f"transcript found. transcript.status {transcript.status}")
+
+                # Если транскрипция уже завершена
+                if transcript.status == "done":
+                    return jsonify({
+                        "transcript": transcript.transcript,
+                        "videoId": transcript.video_id,
+                        "created_at": transcript.created_at
+                    }), 200
+                # Если не завершена, отправим статус
+                else:
+                    return jsonify({
+                        "status": transcript.status,
+                        "videoId": transcript.video_id,
+                        "created_at": transcript.created_at
+                    }), 200
+
+
+            #Link user to this video_id (UserTranscript)
+            user_trans_link = session.query(UserTranscript)\
+            .filter_by(user_id=user_id, video_id=video_id).first()
+            
+            if not user_trans_link:
+                user_trans_link = UserTranscript(user_id=user_id, video_id=video_id)
+                session.add(user_trans_link)
         except Exception as e:
             logger.error(f"Error saving transcript: {e}")
             raise
-   
-    
 
+    # Запуск Celery-цепочки
     workflow = chain(
         triger_download.s(video_id),
         transcribe_audio_task.s() 
     )
     
     chain_result = workflow.apply_async()
-    triger_download_task_id = chain_result.parent.id 
+    triger_download_task_id = chain_result.parent.id
     transcribe_audio_task_id = chain_result.id
     
     return jsonify({
         "message": f"URL {video_url} submitted successfully!",
         "triger_download_task_id": triger_download_task_id,
-        "transcribe_audio_task_id":transcribe_audio_task_id
+        "transcribe_audio_task_id": transcribe_audio_task_id,
+        "already_linked": True
     }), 200
 
 @app.route("/task_status/<task_id>", methods=["GET"])
@@ -284,31 +366,87 @@ def protected():
 @app.route('/user-transcripts', methods=['GET'])
 @jwt_required()
 def get_user_transcripts():
-    """
-    Returns all transcripts for the authenticated user.
-    """
     user_id = get_jwt_identity()
-    
+
     with get_session() as session:
-        user = session.query(User).filter_by(id=user_id).first()
-        if not user:
-            return jsonify({"msg": "Пользователь не найден"}), 404
+        links = session.query(UserTranscript).filter_by(user_id=user_id).all()
         
-        transcripts = session.query(Transcript).filter_by(user_id=user_id).all()
-        
-        # Сериализация транскриптов
-        transcripts_data = []
-        for t in transcripts:
-            transcripts_data.append({
+        result = []
+        for link in links:
+            t:Transcript = link.transcript  # Это объект Transcript
+            result.append({
                 "video_id": t.video_id,
-                "transcript": t.transcript,
-                "raw_json": t.raw_json,
-                "created_at": t.created_at.isoformat() if t.created_at else None,
+                "title": t.title,
+                "description": t.description,
                 "status": t.status,
-                "error": t.error
+                "published_at":t.published_at,
+                "thumbnail_url":t.thumbnail_url,
+                "channel_title":t.channel_title,
+                "channel_id":t.channel_id,
+                "duration":t.duration
             })
         
-        return jsonify({"transcripts": transcripts_data}), 200
+    return jsonify(result), 200
+
+@app.route("/check-user-transcript", methods=["GET"])
+@jwt_required()
+def check_user_transcript():
+    user_id = get_jwt_identity()
+    video_id = request.args.get("video_id")
+    if not video_id:
+        return jsonify({"error": "video_id param is required"}), 400
+
+    with get_session() as session:
+        existing_link = session.query(UserTranscript).filter_by(
+            user_id=user_id,
+            video_id=video_id
+        ).first()
+        if existing_link:
+            return jsonify({"already_linked": True}), 200
+        else:
+            return jsonify({"already_linked": False}), 200
+
+
+@app.route("/add-user-transcript", methods=["POST"])
+@jwt_required()
+def add_user_transcript():
+    user_id = get_jwt_identity()  
+    data = request.json
+    video_id = data.get("video_id")
+
+    if not video_id:
+        return jsonify({"message": "video_id is required"}), 400
+
+    with get_session() as session:
+        # Проверяем, есть ли уже такой Transcript
+        transcript = session.query(Transcript).get(video_id)
+        if not transcript:
+            # Можно либо создать новый Transcript, либо вернуть ошибку.
+            # Для примера — создадим заготовку со статусом 'pending'.
+            transcript = Transcript(video_id=video_id, status="pending")
+            session.add(transcript)
+            session.commit()
+
+        # Проверяем, не добавлен ли этот Transcript уже этому пользователю
+        existing_link = session.query(UserTranscript).filter_by(
+            user_id=user_id,
+            video_id=video_id
+        ).first()
+
+        if existing_link:
+            # Уже связан — возвращаем какой-нибудь "ОК"
+            return jsonify({
+                    "message": "Transcript already linked to user",
+                    "already_linked": True
+            }), 200
+
+        # Если связи нет — создаём
+        link = UserTranscript(user_id=user_id, video_id=video_id)
+        session.add(link)
+        session.commit()
+
+    return jsonify({"message": "success","already_linked": True}), 201
+
 # gunicorn точка входа останется такой же
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

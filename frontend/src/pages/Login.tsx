@@ -20,6 +20,8 @@ const Login: React.FC = () => {
 
       if (response.ok) {
         localStorage.setItem("access_token", data.access_token);
+        console.log(data.access_token);
+
         navigate("/profile"); // Перенаправление на страницу профиля
       } else {
         alert(data.msg || "Login failed");

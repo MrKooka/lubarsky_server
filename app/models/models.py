@@ -1,19 +1,13 @@
 # app/models/models.py
-from sqlalchemy import (
-    Column,
-    String,
-    Text,
-    Integer,
-    DateTime,
-    func,
-    ForeignKey,
-    Float
-)
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Text, Float
+
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from app.services.logging_service import setup_logger
 from dataclasses import dataclass
 from werkzeug.security import generate_password_hash, check_password_hash 
+from sqlalchemy.sql import func
+
 
 logger = setup_logger("app.models.models")
 
@@ -32,7 +26,9 @@ class User(Base):
     password_hash = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    transcripts = relationship('Transcript', back_populates='user', cascade="all, delete-orphan")
+    
+    # Убираем .transcripts, потому что связь "многие-ко-многим" теперь живёт в UserTranscript
+    # transcripts = relationship('Transcript', back_populates='user')  # <-- УДАЛИТЬ
 
     def set_password(self, password: str):
         self.password_hash = generate_password_hash(password)
@@ -40,7 +36,9 @@ class User(Base):
 
     def check_password(self, password: str) -> bool:
         return check_password_hash(self.password_hash, password)
-    
+
+
+
 class Transcript(Base):
     __tablename__ = 'transcripts'
 
@@ -50,10 +48,32 @@ class Transcript(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     status = Column(String(50), default='pending')  
     error = Column(String(255), nullable=True)  
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True) 
+    title = Column(String(255), nullable=True)
+    description = Column(Text, nullable=True)
+    published_at = Column(DateTime, nullable=True)
+    channel_id = Column(String(255), nullable=True)
+    channel_title = Column(String(255), nullable=True)
+    category_id = Column(String(50), nullable=True)
+    thumbnail_url = Column(String(512), nullable=True)
+    tags = Column(Text, nullable=True) 
+    duration = Column(String(50), nullable=True)
+    dimension = Column(String(50), nullable=True)
+    definition = Column(String(50), nullable=True)
+    caption = Column(Boolean, nullable=True)
+    licensed_content = Column(Boolean, nullable=True)
+    projection = Column(String(50), nullable=True)
+    view_count = Column(Integer, nullable=True)
+    like_count = Column(Integer, nullable=True)
+    dislike_count = Column(Integer, nullable=True)
+    favorite_count = Column(Integer, nullable=True)
+    comment_count = Column(Integer, nullable=True)
+    privacy_status = Column(String(50), nullable=True)
+    license = Column(String(50), nullable=True)
+    embeddable = Column(Boolean, nullable=True)
+    public_stats_viewable = Column(Boolean, nullable=True)
+
 
     words = relationship('TranscriptionWord', back_populates='transcript', cascade="all, delete-orphan")
-    user = relationship('User', back_populates='transcripts')  
 
     def update_status(self, new_status, session):
         """
@@ -87,4 +107,18 @@ class TranscriptionWord(Base):
     end = Column(Float, nullable=False)
 
     transcript = relationship('Transcript', back_populates='words')
+
+class UserTranscript(Base):
+    __tablename__ = 'user_transcript'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    video_id = Column(String(255), ForeignKey('transcripts.video_id'), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    user = relationship('User', backref='user_transcripts')
+    transcript = relationship('Transcript', backref='user_transcripts')
+
 db = Base.metadata
+
+

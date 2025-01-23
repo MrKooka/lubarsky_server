@@ -3,6 +3,9 @@ import os
 from dotenv import load_dotenv
 from typing import List, Dict, Any
 import re 
+from app.services.logging_service import setup_logger
+
+logger = setup_logger("app.youtube_service.")
 
 load_dotenv()
 YOUTUBE_API_KEY = os.environ.get('YOUTUBE_API_KEY')
@@ -18,9 +21,12 @@ def get_youtube_video_id_from_url(url):
         r'(?P<id>[A-Za-z0-9\-=_]{11})'  
     )
     match = regex.search(url)
+    id_ = match.group("id")
     if match:
+        logger.debug(f"regex complited resuld: {id_}")
         return match.group("id")
     else:
+        logger.debug("no Match")
         return None
 
 
