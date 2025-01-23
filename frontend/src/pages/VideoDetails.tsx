@@ -310,7 +310,7 @@ const VideoDetails: React.FC = () => {
                   </Link>
                   )
                 </Card.Text>
-
+                <Card.Text>Duration: {videoDetails.duration}</Card.Text>
                 {/* Кнопка "Transcript", запускаем Celery-процесс */}
                 <Button
                   variant="primary"

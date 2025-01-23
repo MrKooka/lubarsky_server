@@ -280,6 +280,35 @@ def protected():
             return jsonify({"msg": "User not found"}), 404
         return jsonify({"username": user.username}), 200
 
+
+@app.route('/user-transcripts', methods=['GET'])
+@jwt_required()
+def get_user_transcripts():
+    """
+    Returns all transcripts for the authenticated user.
+    """
+    user_id = get_jwt_identity()
+    
+    with get_session() as session:
+        user = session.query(User).filter_by(id=user_id).first()
+        if not user:
+            return jsonify({"msg": "Пользователь не найден"}), 404
+        
+        transcripts = session.query(Transcript).filter_by(user_id=user_id).all()
+        
+        # Сериализация транскриптов
+        transcripts_data = []
+        for t in transcripts:
+            transcripts_data.append({
+                "video_id": t.video_id,
+                "transcript": t.transcript,
+                "raw_json": t.raw_json,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+                "status": t.status,
+                "error": t.error
+            })
+        
+        return jsonify({"transcripts": transcripts_data}), 200
 # gunicorn точка входа останется такой же
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
