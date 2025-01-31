@@ -3,10 +3,10 @@ import json
 from dateutil import parser
 import logging
 import sys
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory,send_file
 import os
 # from .tasks import triger_download
-from app.tasks import triger_download,transcribe_audio_task
+from app.tasks import triger_download,transcribe_audio_task,download_and_extract_fragment
 from app.youtube_service import (
     fetch_channel_videos, 
     fetch_playlist_videos, 
@@ -21,7 +21,7 @@ from app import SessionLocal
 from celery import chain
 from celery.result import AsyncResult
 from app.celery_app import celery
-from app.models.models import Transcript, User, UserTranscript
+from app.models.models import Transcript, User, UserTranscript, DownloadFragment
 from app.services.database_service import get_session
 from flask_jwt_extended import JWTManager
 from dotenv import load_dotenv
@@ -163,7 +163,7 @@ def transcript_video():
 
     # Запуск Celery-цепочки
     workflow = chain(
-        triger_download.s(video_id),
+        triger_download.s(video_id,user_id),
         transcribe_audio_task.s() 
     )
     
@@ -447,6 +447,109 @@ def add_user_transcript():
 
     return jsonify({"message": "success","already_linked": True}), 201
 
+@app.route('/download_fragment', methods=['POST'])
+@jwt_required()
+def download_fragment():
+    """
+    Эндпоинт для скачивания фрагмента YouTube-видео.
+
+    Ожидает JSON с полями:
+        - video_url: URL видео на YouTube
+        - start_time: Время начала фрагмента (формат HH:MM:SS)
+        - end_time: Время окончания фрагмента (формат HH:MM:SS)
+    """
+    user_id = get_jwt_identity()
+    data = request.get_json()
+
+    video_url = data.get('video_url')
+    start_time = data.get('start_time')
+    end_time = data.get('end_time')
+
+    if not all([video_url, start_time, end_time]):
+        return jsonify({"error": "video_url, start_time и end_time обязательны"}), 400
+
+    # Валидация формата времени
+    def validate_time_format(time_str):
+        try:
+            parts = time_str.split(':')
+            if len(parts) != 3:
+                return False
+            h, m, s = map(int, parts)
+            return 0 <= m < 60 and 0 <= s < 60
+        except:
+            return False
+
+    if not (validate_time_format(start_time) and validate_time_format(end_time)):
+        return jsonify({"error": "start_time и end_time должны быть в формате HH:MM:SS"}), 400
+
+    # Инициирование задачи Celery
+    task = download_and_extract_fragment.apply_async(args=[video_url, start_time, end_time, user_id])
+
+    return jsonify({"message": "Задача инициирована", "task_id": task.id}), 202
+
+@app.route('/download_fragment_result/<task_id>', methods=['GET'])
+def download_fragment_result(task_id):
+    """
+    Эндпоинт для скачивания результата фрагментации видео.
+
+    :param task_id: ID задачи Celery.
+    """
+    task = AsyncResult(task_id, app=celery)
+
+    if task.state == 'PENDING':
+        return jsonify({"status": "PENDING"}), 202
+    elif task.state == 'FAILURE':
+        return jsonify({"status": "FAILURE", "error": str(task.info)}), 400
+    elif task.state == 'SUCCESS':
+        fragment_path = task.result
+        if not os.path.exists(fragment_path):
+            return jsonify({"status": "ERROR", "error": "Файл не найден"}), 404
+
+        # Проверка принадлежности файла пользователю
+        # expected_path = os.path.join("downloads", user_id)
+        # if not fragment_path.startswith(os.path.abspath(expected_path)):
+        #     return jsonify({"status": "ERROR", "error": "Доступ запрещён"}), 403
+
+        return send_file(fragment_path, as_attachment=True)
+
+    else:
+        # Для состояний 'STARTED', 'RETRY'
+        return jsonify({"status": task.state}), 202
+    
+@app.route('/user_downloads', methods=['GET'])
+@jwt_required()
+def user_downloads():
+    user_id = get_jwt_identity()
+    try:
+        with get_session() as session:
+            downloads = session.query(DownloadFragment).filter_by(user_id=user_id).all()
+            
+            if not downloads:
+                return jsonify({
+                    "downloads": [],
+                    "message": "У вас пока нет скачанных видео."
+                }), 200
+            
+            # Формируем список словарей для ответа внутри сессии
+            result = []
+            for d in downloads:
+                result.append({
+                    "id": d.id,
+                    "video_url": d.video_url,
+                    "start_time": d.start_time,
+                    "end_time": d.end_time,
+                    "fragment_path": d.fragment_path,
+                    "created_at": d.created_at.isoformat()
+                })
+        
+        return jsonify({
+            "downloads": result,
+            "message": "Список скачанных видео успешно получен."
+        }), 200
+
+    except Exception as e:
+        app.logger.error(f"Ошибка при обработке /user_downloads: {e}")
+        return jsonify({"error": "Внутренняя ошибка сервера"}), 500
 # gunicorn точка входа останется такой же
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

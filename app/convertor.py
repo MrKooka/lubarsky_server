@@ -31,78 +31,161 @@ import subprocess
 import sys
 import datetime
 import yt_dlp
-
+from app.services.logging_service import setup_logger
+from app.services.convertor_service import sanitize_filename
 # ------------------------------------------------------------------------------
 # Configure Logging
 # ------------------------------------------------------------------------------
-logging.basicConfig(
-    level=logging.DEBUG,  # Capture all logs: DEBUG, INFO, WARNING, ERROR, CRITICAL
-    format='[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s',
-    handlers=[
-        logging.FileHandler("video_downloader.log", mode='a', encoding='utf-8'),
-        logging.StreamHandler(sys.stdout),  # Also print to console
-    ]
-)
-logger = logging.getLogger("YouTubeDownloader")
+# logging.basicConfig(
+#     level=logging.DEBUG,  # Capture all logs: DEBUG, INFO, WARNING, ERROR, CRITICAL
+#     format='[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s',
+#     handlers=[
+#         logging.FileHandler("video_downloader.log", mode='a', encoding='utf-8'),
+#         logging.StreamHandler(sys.stdout),  # Also print to console
+#     ]
+# )
+
+logger = setup_logger("app.convertor")
 
 
-def progress_hook(d):
+
+
+# def download_youtube_video(
+#         url: str, 
+#         download_path: str, 
+#         ydl_opts
+# ) -> str:
+#     """
+#     Download the highest-quality (audio+video) stream of a YouTube video
+#     using yt-dlp.
+
+#     :param url: The YouTube video URL.
+#     :param download_path: The directory where the file will be saved.
+#     :return: Absolute path to the downloaded video file.
+#     """
+#     logger.info(f"Starting video download for URL: {url}")
+#     logger.debug(f"Download path: {download_path}")
+
+#     os.makedirs(download_path, exist_ok=True)
+#     print("download_path from download_y..:",download_path)
+
+#     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+#         try:
+#             logger.info("Extracting video info, about to download...")
+#             result = ydl.extract_info(url, download=True)
+#         except yt_dlp.utils.DownloadError as e:
+#             logger.exception("DownloadError encountered (yt-dlp).")
+#             raise e
+#         except Exception as e:
+#             logger.exception("General exception occurred during download.")
+#             raise e
+
+#     if 'entries' in result:  # If it's a playlist or multiple videos
+#         video_info = result['entries'][0]
+#     else:
+#         video_info = result 
+
+#     title = sanitize_filename(video_info.get('title', 'audio'))
+#     postprocessor = ydl_opts.get('postprocessors', [{}])[0]
+#     preferredcodec = postprocessor.get('preferredcodec', 'mp3')
+#     audio_filename = f"{title}.{preferredcodec}"
+#     audio_filepath = os.path.join(download_path, audio_filename)
+
+#     if not os.path.exists(audio_filepath):
+#         logger.error(f"Expected audio file {audio_filepath} does not exist.")
+#         raise FileNotFoundError(f"Expected audio file {audio_filepath} does not exist.")
+
+#     logger.info(f"Download finished. File saved to: {audio_filepath}")
+#     return audio_filepath
+
+
+def download_audio(url: str, download_path: str, ydl_opts) -> str:
     """
-    Progress hook for yt-dlp that logs each download progress event.
+    Скачивает аудио из YouTube-видео с использованием yt_dlp.
+    
+    :param url: URL видео на YouTube.
+    :param download_path: Директория для сохранения аудиофайла.
+    :param ydl_opts: Опции для yt_dlp (включая format, outtmpl, postprocessors и т.д.).
+    :return: Абсолютный путь к скачанному аудиофайлу (фактическое имя, которое использовал yt_dlp).
     """
-    if d['status'] == 'downloading':
-        fraction = d.get('_percent_str', '').strip()
-        speed = d.get('_speed_str', 'N/A').strip()
-        eta = d.get('_eta_str', 'N/A').strip()
-        logger.debug(f"Downloading... {fraction} at {speed} ETA: {eta}")
-    elif d['status'] == 'finished':
-        logger.info("Download complete; now post-processing if needed.")
-    elif d['status'] == 'error':
-        logger.error("Error during download!")
-
-
-def download_youtube_video(url: str, download_path: str) -> str:
-    """
-    Download the highest-quality (audio+video) stream of a YouTube video
-    using yt-dlp.
-
-    :param url: The YouTube video URL.
-    :param download_path: The directory where the file will be saved.
-    :return: Absolute path to the downloaded video file.
-    """
-    logger.info(f"Starting video download for URL: {url}")
+    logger.info(f"Starting audio download for URL: {url}")
     logger.debug(f"Download path: {download_path}")
 
-    ydl_opts = {
-        'format': 'bv+ba/best',  # best video + best audio, fallback to 'best'
-        'outtmpl': os.path.join(download_path, '%(title)s.%(ext)s'),
-        'logger': logger,
-        'progress_hooks': [progress_hook],
-        # If you have a cookies file for age-restricted videos:
-        # 'cookiefile': '/path/to/cookies.txt',
-    }
-
     os.makedirs(download_path, exist_ok=True)
+    logger.debug(f"download_path from download_audio: {download_path}")
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
-            logger.info("Extracting video info, about to download...")
+            logger.info("Extracting video info, about to download audio...")
             result = ydl.extract_info(url, download=True)
         except yt_dlp.utils.DownloadError as e:
-            logger.exception("DownloadError encountered (yt-dlp).")
+            logger.exception("DownloadError encountered (yt_dlp) during audio download.")
             raise e
         except Exception as e:
-            logger.exception("General exception occurred during download.")
+            logger.exception("General exception occurred during audio download.")
             raise e
 
-    if 'entries' in result:  # If it's a playlist or multiple videos
+    # Если это плейлист или несколько видео, берём первый элемент
+    if 'entries' in result:
         video_info = result['entries'][0]
     else:
         video_info = result
 
-    downloaded_filename = ydl.prepare_filename(video_info)
-    logger.info(f"Download finished. File saved to: {downloaded_filename}")
-    return downloaded_filename
+    requested_downloads = video_info.get('requested_downloads')
+    downloaded_file_path = requested_downloads[-1].get('filepath')
+
+    if not downloaded_file_path or not os.path.exists(downloaded_file_path):
+        logger.error(f"Expected audio file {downloaded_file_path} does not exist.")
+        raise FileNotFoundError(f"Expected audio file {downloaded_file_path} does not exist.")
+
+    logger.info(f"Audio download finished. File saved to: {downloaded_file_path}")
+    return downloaded_file_path
+
+
+# /app/convertor.py
+
+def download_video(url: str, download_path: str, ydl_opts) -> str:
+    """
+    Скачивает видео из YouTube с использованием yt_dlp.
+    
+    :param url: URL видео на YouTube.
+    :param download_path: Директория для сохранения видеофайла.
+    :param ydl_opts: Опции для yt_dlp.
+    :return: Абсолютный путь к скачанному видеофайлу (фактическое имя, которое использовал yt_dlp).
+    """
+    logger.info(f"Starting video download for URL: {url}")
+    logger.debug(f"Download path: {download_path}")
+
+    os.makedirs(download_path, exist_ok=True)
+    logger.debug(f"download_path from download_video: {download_path}")
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        try:
+            logger.info("Extracting video info, about to download video...")
+            result = ydl.extract_info(url, download=True)
+        except yt_dlp.utils.DownloadError as e:
+            logger.exception("DownloadError encountered (yt_dlp) during video download.")
+            raise e
+        except Exception as e:
+            logger.exception("General exception occurred during video download.")
+            raise e
+
+    # Аналогично, если плейлист - берём первый элемент
+    if 'entries' in result:
+        video_info = result['entries'][0]
+    else:
+        video_info = result
+
+    requested_downloads = video_info.get('requested_downloads')
+    downloaded_file_path = requested_downloads[-1].get('filepath')
+
+    # Получаем путь к фактическому файлу, сохранённому yt_dlp
+    if not downloaded_file_path or not os.path.exists(    downloaded_file_path):
+        logger.error(f"Expected video file {downloaded_file_path} does not exist.")
+        raise FileNotFoundError(f"Expected video file {downloaded_file_path} does not exist.")
+
+    logger.info(f"Video download finished. File saved to: {downloaded_file_path}")
+    return downloaded_file_path
 
 
 def get_file_size_mb(file_path: str) -> float:
@@ -283,6 +366,8 @@ def build_ffmpeg_audio_command(
     return cmd
 
 
+# /app/convertor.py
+
 def compress_audio_extreme(
     input_file: str,
     chosen_format: str,
@@ -294,32 +379,30 @@ def compress_audio_extreme(
     use_vbr: bool = False,
 ) -> str:
     """
-    Convert the media to one of the 10 supported audio formats with optional iterative 
-    approach if it's a lossy codec and user wants to keep under max_size_mb.
+    Конвертирует аудиофайл в один из поддерживаемых форматов с опциональной итеративной компрессией.
 
-    :param input_file: original video file
-    :param chosen_format: e.g. 'ogg', 'webm', 'm4a', etc.
-    :param chosen_codec: e.g. 'libopus', 'libfdk_aac', 'flac', 'pcm_s16le'
-    :param is_lossless: True if FLAC or WAV
-    :param max_size_mb: if provided, tries to keep final file under this size
-    :param initial_bitrate_kbps: start bitrate for iterative approach
-    :param min_bitrate_kbps: min allowed bitrate
-    :param use_vbr: if True, we pass -vbr on (currently for Opus)
-    :return: path to final compressed file or empty string on failure
+    :param input_file: Путь к исходному аудиофайлу.
+    :param chosen_format: Желаемый аудиоформат (например, 'ogg', 'webm', 'm4a', и т.д.).
+    :param chosen_codec: Кодек для конвертации (например, 'libopus', 'libfdk_aac', 'flac', 'pcm_s16le').
+    :param is_lossless: True, если формат без потерь (например, FLAC или WAV).
+    :param max_size_mb: Максимальный размер выходного файла в мегабайтах.
+    :param initial_bitrate_kbps: Начальный битрейт для итеративного подхода.
+    :param min_bitrate_kbps: Минимально допустимый битрейт.
+    :param use_vbr: Использовать ли переменный битрейт (например, для Opus).
+    :return: Путь к конечному сжатому файлу или пустая строка при неудаче.
     """
     logger.info("Starting advanced audio compression...")
 
     base, _ = os.path.splitext(input_file)
-    out_file_base = f"{base}.{chosen_format}"
+    sanitized_base = sanitize_filename(base)
+    out_file_base = f"{sanitized_base}.{chosen_format}"
 
-    # Avoid overwriting existing file
+    # Избегаем перезаписи существующего файла
     if os.path.exists(out_file_base):
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_file_base = f"{base}_{timestamp}.{chosen_format}"
+        out_file_base = f"{sanitized_base}_{timestamp}.{chosen_format}"
 
-    # Single pass if:
-    # 1) It's lossless (FLAC or WAV), or
-    # 2) no max_size_mb specified
+    # Однопроходный режим, если формат без потерь или не задано ограничение по размеру
     if is_lossless or not max_size_mb:
         logger.info("Single-pass mode. Either lossless or no size constraint.")
         cmd = build_ffmpeg_audio_command(
@@ -332,8 +415,12 @@ def compress_audio_extreme(
         logger.debug(f"FFmpeg command: {' '.join(cmd)}")
 
         try:
-            subprocess.run(cmd, check=True)
+            result = subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            logger.debug(f"FFmpeg stdout: {result.stdout.decode()}")
+            logger.debug(f"FFmpeg stderr: {result.stderr.decode()}")
         except subprocess.CalledProcessError as e:
+            logger.error(f"FFmpeg stdout: {e.stdout.decode()}")
+            logger.error(f"FFmpeg stderr: {e.stderr.decode()}")
             logger.exception("FFmpeg conversion failed!")
             raise RuntimeError("Audio conversion failed.") from e
 
@@ -343,7 +430,7 @@ def compress_audio_extreme(
         )
         return out_file_base
 
-    # Otherwise, we do an iterative approach for lossy compression.
+    # Итерируемый подход для компрессии с потерями
     original_size_mb = get_file_size_mb(input_file)
     logger.debug(f"Original file size: {original_size_mb:.2f} MB")
 
@@ -352,7 +439,7 @@ def compress_audio_extreme(
 
     while True:
         short_ts = datetime.datetime.now().strftime("%H%M%S")
-        attempt_path = f"{base}_{current_bitrate}k_{short_ts}.{chosen_format}"
+        attempt_path = f"{sanitized_base}_{current_bitrate}k_{short_ts}.{chosen_format}"
 
         cmd = build_ffmpeg_audio_command(
             input_file=input_file,
@@ -365,8 +452,12 @@ def compress_audio_extreme(
         logger.debug(f"FFmpeg command: {' '.join(cmd)}")
 
         try:
-            subprocess.run(cmd, check=True)
+            result = subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            logger.debug(f"FFmpeg stdout: {result.stdout.decode()}")
+            logger.debug(f"FFmpeg stderr: {result.stderr.decode()}")
         except subprocess.CalledProcessError as e:
+            logger.error(f"FFmpeg stdout: {e.stdout.decode()}")
+            logger.error(f"FFmpeg stderr: {e.stderr.decode()}")
             logger.exception("FFmpeg conversion failed at this bitrate!")
             raise RuntimeError("Audio conversion failed.") from e
 
@@ -402,6 +493,7 @@ def compress_audio_extreme(
                 break
 
     return attempt_path
+
 
 
 def convert_video(input_file: str, output_ext: str) -> str:
@@ -533,6 +625,46 @@ def main():
     logger.info("Script finished.")
     print("\nAll done! Check 'video_downloader.log' for a very detailed record of every step.")
 
+
+def extract_video_fragment(input_video: str, output_fragment: str, start_time: str, end_time: str) -> None:
+    """
+    Вырезает фрагмент из видео с использованием FFmpeg.
+    
+    :param input_video: Путь к исходному видеофайлу.
+    :param output_fragment: Путь для сохранения фрагмента.
+    :param start_time: Время начала фрагмента (формат HH:MM:SS).
+    :param end_time: Время окончания фрагмента (формат HH:MM:SS).
+    """
+    logger.info(f"Extracting video fragment from {input_video} to {output_fragment}")
+    
+    # Расчёт длительности фрагмента
+    fmt = '%H:%M:%S'
+    t_start = datetime.datetime.strptime(start_time, fmt)
+    t_end = datetime.datetime.strptime(end_time, fmt)
+    duration = (t_end - t_start).seconds
+    
+    cmd = [
+        "ffmpeg",
+        "-y",  # Перезаписывать без запроса
+        "-i", input_video,
+        "-ss", start_time,
+        "-t", str(duration),
+        "-c", "copy",
+        output_fragment
+    ]
+    
+    logger.debug(f"FFmpeg command for fragment extraction: {' '.join(cmd)}")
+    
+    try:
+        result = subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        logger.debug(f"FFmpeg stdout: {result.stdout.decode()}")
+        logger.debug(f"FFmpeg stderr: {result.stderr.decode()}")
+        logger.info(f"Video fragment extracted successfully to {output_fragment}")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"FFmpeg stdout: {e.stdout.decode()}")
+        logger.error(f"FFmpeg stderr: {e.stderr.decode()}")
+        logger.exception("FFmpeg failed to extract video fragment.")
+        raise RuntimeError("Video fragment extraction failed.") from e
 
 if __name__ == "__main__":
     main()

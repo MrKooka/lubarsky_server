@@ -12,6 +12,8 @@ import Profile from "./pages/Profile";
 import Register from "./pages/Register";
 import { Navbar, Nav, Container } from "react-bootstrap";
 import PrivateRoute from "./components/PrivateRoute";
+import DownloadFragment from "./pages/DownloadFragment";
+import UserDownloads from "./pages/UserDownloads";
 
 const App = () => {
   return (
@@ -42,6 +44,12 @@ const App = () => {
               </Nav.Link>
               <Nav.Link as={Link} to="/register">
                 Sing Up
+              </Nav.Link>
+              <Nav.Link as={Link} to="/DownloadFragment">
+                Download Fragment
+              </Nav.Link>
+              <Nav.Link as={Link} to="/UserDownloads">
+                UserDownloads
               </Nav.Link>
             </Nav>
           </Navbar.Collapse>
@@ -93,6 +101,8 @@ const App = () => {
         <Route path="/register" element={<Register />} />
         <Route element={<PrivateRoute />}>
           <Route path="/profile" element={<Profile />} />
+          <Route path="/DownloadFragment" element={<DownloadFragment />} />
+          <Route path="/UserDownloads" element={<UserDownloads />} />
           {/* Добавьте другие защищённые маршруты здесь */}
         </Route>
       </Routes>

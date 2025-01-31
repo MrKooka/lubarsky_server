@@ -119,6 +119,21 @@ class UserTranscript(Base):
     user = relationship('User', backref='user_transcripts')
     transcript = relationship('Transcript', backref='user_transcripts')
 
+
+
+
+
+
+class DownloadFragment(Base):
+    __tablename__ = "download_fragments"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(String(50), nullable=False)
+    video_url = Column(String(255), nullable=False)
+    start_time = Column(String(8), nullable=False)
+    end_time = Column(String(8), nullable=False)
+    fragment_path = Column(String(500), nullable=False)
+    created_at = Column(DateTime, default=func.now())
+
+
 db = Base.metadata
-
-
