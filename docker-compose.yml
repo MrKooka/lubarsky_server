@@ -104,7 +104,22 @@ services:
     networks:
       - app_network
     ports:
-      - "5432:5432"  # при необходимости доступ с хоста
+      - "5432:5432"
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    depends_on:
+      - flask_app
+      - frontend
+      - n8n
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/ssl-keys:/root/ssl-keys:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - app_network
 
 networks:
   app_network:

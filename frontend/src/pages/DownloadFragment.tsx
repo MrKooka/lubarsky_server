@@ -12,8 +12,16 @@ interface CeleryTaskResponse {
  */
 const DownloadFragment: React.FC = () => {
   const [videoUrl, setVideoUrl] = useState("");
-  const [startTime, setStartTime] = useState("00:00:00");
-  const [endTime, setEndTime] = useState("00:00:00");
+
+  // Для времени начала (часы, минуты, секунды)
+  const [startHour, setStartHour] = useState("00");
+  const [startMinute, setStartMinute] = useState("00");
+  const [startSecond, setStartSecond] = useState("00");
+
+  // Для времени конца (часы, минуты, секунды)
+  const [endHour, setEndHour] = useState("00");
+  const [endMinute, setEndMinute] = useState("00");
+  const [endSecond, setEndSecond] = useState("00");
 
   const [taskId, setTaskId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>(""); // Храним состояние задачи (PENDING, SUCCESS, FAILURE и т.д.)
@@ -29,7 +37,17 @@ const DownloadFragment: React.FC = () => {
     setStatus("");
     setTaskId(null);
 
-    // Валидируйте при желании перед отправкой
+    // Восстановим время в формате HH:MM:SS
+    const startTime = `${startHour.padStart(2, "0")}:${startMinute.padStart(
+      2,
+      "0"
+    )}:${startSecond.padStart(2, "0")}`;
+    const endTime = `${endHour.padStart(2, "0")}:${endMinute.padStart(
+      2,
+      "0"
+    )}:${endSecond.padStart(2, "0")}`;
+
+    // Простая валидация
     if (!videoUrl.trim()) {
       setError("Необходимо ввести ссылку на видео");
       return;
@@ -86,32 +104,19 @@ const DownloadFragment: React.FC = () => {
             Authorization: `Bearer ${token}`,
           },
         });
-        // Если задача ещё не готова, сервер ответит 202 и вернёт "PENDING" или "STARTED"
-        // Если SUCCESS -> вернёт файл (или попытается отдать файл).
-        // Но мы можем проверять res.status или брать JSON, если это не файл.
-        // Чтобы различать, нужно проверить content-type.
-        // Можно договориться, что при PENDING/FAILURE сервер возвращает JSON,
-        // а при SUCCESS — сразу файл. В таком случае fetch его поймает
-        // как blob или начнёт скачивание. Это усложняет.
-        //
-        // Проще договориться, что для статуса забирать JSON, а для скачивания
-        // сделать отдельную кнопку <a href="/api/download_fragment_result/{taskId}" download>.
-        //
-        // Проверяем код ответа:
+
         if (res.status === 202) {
-          // Сервер вернул JSON со статусом.
+          // Сервер вернул JSON со статусом PENDING/STARTED
           const data: CeleryTaskResponse = await res.json();
           setStatus(data.status); // PENDING, STARTED...
         } else if (res.status === 200) {
-          // Значит SUCCESS и в ответ летит сам файл.
-          // Но fetch его попытается сразу скачать как blob.
-          // Мы можем просто считать, что если 200, то всё готово -> показываем кнопку
+          // Значит SUCCESS и в ответ летит сам файл
           setStatus("SUCCESS");
           if (intervalId) {
             clearInterval(intervalId);
           }
         } else if (res.status === 400 || res.status === 404) {
-          // FAILURE или файл не найден
+          // Скорее всего FAILURE
           const data: CeleryTaskResponse = await res.json();
           setStatus("FAILURE");
           setError(data.error || "Ошибка при скачивании");
@@ -158,24 +163,65 @@ const DownloadFragment: React.FC = () => {
           />
         </Form.Group>
 
-        <Form.Group controlId="startTime" className="mb-3">
-          <Form.Label>Время начала (HH:MM:SS)</Form.Label>
-          <Form.Control
-            type="text"
-            value={startTime}
-            onChange={(e) => setStartTime(e.target.value)}
-            placeholder="00:00:00"
-          />
+        {/* Время начала: три отдельных поля (часы, минуты, секунды) */}
+        <Form.Group controlId="startTimeGroup" className="mb-3">
+          <Form.Label>Время начала</Form.Label>
+          <div className="d-flex gap-2">
+            <Form.Control
+              size="sm"
+              type="text"
+              placeholder="HH"
+              value={startHour}
+              onChange={(e) => setStartHour(e.target.value)}
+              style={{ width: "60px" }}
+            />
+            <Form.Control
+              size="sm"
+              type="text"
+              placeholder="MM"
+              value={startMinute}
+              onChange={(e) => setStartMinute(e.target.value)}
+              style={{ width: "60px" }}
+            />
+            <Form.Control
+              size="sm"
+              type="text"
+              placeholder="SS"
+              value={startSecond}
+              onChange={(e) => setStartSecond(e.target.value)}
+              style={{ width: "60px" }}
+            />
+          </div>
         </Form.Group>
 
-        <Form.Group controlId="endTime" className="mb-3">
-          <Form.Label>Время конца (HH:MM:SS)</Form.Label>
-          <Form.Control
-            type="text"
-            value={endTime}
-            onChange={(e) => setEndTime(e.target.value)}
-            placeholder="00:00:00"
-          />
+        <Form.Group controlId="endTimeGroup" className="mb-3">
+          <Form.Label>Время конца</Form.Label>
+          <div className="d-flex gap-2">
+            <Form.Control
+              size="sm"
+              type="text"
+              placeholder="HH"
+              value={endHour}
+              onChange={(e) => setEndHour(e.target.value)}
+              style={{ width: "60px" }}
+            />
+            <Form.Control
+              size="sm"
+              type="text"
+              placeholder="MM"
+              value={endMinute}
+              onChange={(e) => setEndMinute(e.target.value)}
+              style={{ width: "60px" }}
+            />
+            <Form.Control
+              size="sm"
+              type="text"
+              placeholder="SS"
+              value={endSecond}
+              onChange={(e) => setEndSecond(e.target.value)}
+              style={{ width: "60px" }}
+            />
+          </div>
         </Form.Group>
 
         <Button type="submit" variant="primary" disabled={isProcessing}>
