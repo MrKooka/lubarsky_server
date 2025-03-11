@@ -1,6 +1,7 @@
 #/app/services/convertor_service
 from app.services.logging_service import setup_logger
 import re
+import unicodedata
 
 logger = setup_logger("app.convertor")
 
@@ -20,4 +21,59 @@ def progress_hook(d):
 
 def sanitize_filename(filename):
     # Заменяем специальные символы на подчёркивания
-    return re.sub(r'[^\w\s.-]', '_', filename)
+    filename = re.sub(r'[^\w\s.\-\u0400-\u04FF]+', '_', filename)
+    filename = transliterate(filename)
+    # 2. Общая нормализация и вырезка не-ASCII
+    filename = to_ascii(filename)
+    # 3. Можно уже тут (или внутри to_ascii) заменить пробелы на _
+    filename = filename.replace(' ', '_')
+    return filename
+
+
+TRANSLIT_DICT = {
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd',
+    'е': 'e', 'ё': 'e', 'ж': 'zh', 'з': 'z', 'и': 'i',
+    'й': 'j', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n',
+    'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't',
+    'у': 'u', 'ф': 'f', 'х': 'h', 'ц': 'c', 'ч': 'ch',
+    'ш': 'sh', 'щ': 'sch','ъ': '',  'ы': 'y', 'ь': '',
+    'э': 'e', 'ю': 'yu','я': 'ya'
+}
+
+def transliterate(text: str) -> str:
+    """
+   The simplest transliteration of Russian text into Latin.
+Preserves case: if the letter was capitalized, we make the first Latin letter capitalized.
+Example: "Биков" -> "Bykov"
+    """
+    result = []
+    for char in text:
+        lower_char = char.lower()
+        if lower_char in TRANSLIT_DICT:
+            # Берём транслитерацию из словаря
+            translit_char = TRANSLIT_DICT[lower_char]
+            # Сохраняем регистр, если исходная буква была заглавной
+            if char.isupper() and translit_char:
+                translit_char = translit_char.capitalize()
+            result.append(translit_char)
+        else:
+            # Если символ не в словаре (цифры, пробелы, знаки препинания и т.п.) — оставляем как есть
+            result.append(char)
+    return ''.join(result)
+
+
+def to_ascii(s: str) -> str:
+    """
+    Преобразует строку в ASCII:
+    1. NFKD-нормализует (делит символы с диакритикой на Base + Combining),
+    2. вырезает всё, что не умещается в ASCII (encode('ascii', 'ignore')),
+    3. заменяет любые "лишние" символы (кроме a-z0-9 ._- ) на подчёркивания.
+    """
+    # 1. NFKD
+    nfkd_form = unicodedata.normalize('NFKD', s)
+    # 2. выкидываем всё, что не ASCII
+    ascii_str = nfkd_form.encode('ascii', 'ignore').decode('ascii')
+    # 3. заменяем все неразрешённые символы на '_'
+    # Разрешаем буквы, цифры, точки, подчёркивания, дефисы
+    ascii_str = re.sub(r'[^a-zA-Z0-9._-]+', '_', ascii_str)
+    return ascii_str

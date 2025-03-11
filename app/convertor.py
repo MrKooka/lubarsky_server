@@ -144,14 +144,16 @@ def download_audio(url: str, download_path: str, ydl_opts) -> str:
 
 # /app/convertor.py
 
-def download_video(url: str, download_path: str, ydl_opts) -> str:
+def download_video(url: str, download_path: str, ydl_opts: dict) -> str:
     """
-    Скачивает видео из YouTube с использованием yt_dlp.
+    Скачивает видео (и при необходимости аудио) из YouTube с использованием yt_dlp,
+    при этом может объединять отдельные потоки в один файл (например, "137+140").
     
-    :param url: URL видео на YouTube.
-    :param download_path: Директория для сохранения видеофайла.
-    :param ydl_opts: Опции для yt_dlp.
-    :return: Абсолютный путь к скачанному видеофайлу (фактическое имя, которое использовал yt_dlp).
+    :param url: URL видео.
+    :param download_path: Директория для сохранения.
+    :param ydl_opts: Опции для yt_dlp. Для объединения нужно указать 'format': 'XXX+YYY'
+                     и наличие ffmpeg в системе, либо постпроцессоры.
+    :return: Абсолютный путь к скачанному (итоговому) файлу.
     """
     logger.info(f"Starting video download for URL: {url}")
     logger.debug(f"Download path: {download_path}")
@@ -159,28 +161,47 @@ def download_video(url: str, download_path: str, ydl_opts) -> str:
     os.makedirs(download_path, exist_ok=True)
     logger.debug(f"download_path from download_video: {download_path}")
 
+    # Если хотите гарантировать, что после слияния выйдет mp4-файл,
+    # можно явно добавить/заполнить merge_output_format:
+    if 'merge_output_format' not in ydl_opts:
+        ydl_opts['merge_output_format'] = 'mp4'
+
+    # Можно также добавить постпроцессор, если он не добавлен:
+    if not any(pp.get('key') == 'FFmpegVideoConvertor' 
+               for pp in ydl_opts.get('postprocessors', [])):
+        ydl_opts.setdefault('postprocessors', []).append({
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4'
+        })
+
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
-            logger.info("Extracting video info, about to download video...")
+            logger.info("Extracting video info, about to download...")
             result = ydl.extract_info(url, download=True)
         except yt_dlp.utils.DownloadError as e:
-            logger.exception("DownloadError encountered (yt_dlp) during video download.")
+            logger.exception("DownloadError encountered (yt_dlp).")
             raise e
         except Exception as e:
             logger.exception("General exception occurred during video download.")
             raise e
 
-    # Аналогично, если плейлист - берём первый элемент
+    # Если это плейлист, вытаскиваем первый элемент
     if 'entries' in result:
         video_info = result['entries'][0]
     else:
         video_info = result
 
-    requested_downloads = video_info.get('requested_downloads')
+    # requested_downloads может выглядеть по-разному:
+    #   - видео, аудио, + финальная сборка
+    requested_downloads = video_info.get('requested_downloads') or []
+    if not requested_downloads:
+        logger.error("No requested_downloads found in result!")
+        raise FileNotFoundError("No files were downloaded.")
+
+    # Обычно последний элемент – это уже итоговый файл (после merge)
     downloaded_file_path = requested_downloads[-1].get('filepath')
 
-    # Получаем путь к фактическому файлу, сохранённому yt_dlp
-    if not downloaded_file_path or not os.path.exists(    downloaded_file_path):
+    if not downloaded_file_path or not os.path.exists(downloaded_file_path):
         logger.error(f"Expected video file {downloaded_file_path} does not exist.")
         raise FileNotFoundError(f"Expected video file {downloaded_file_path} does not exist.")
 
@@ -394,7 +415,7 @@ def compress_audio_extreme(
     logger.info("Starting advanced audio compression...")
 
     base, _ = os.path.splitext(input_file)
-    sanitized_base = sanitize_filename(base)
+    # sanitized_base = sanitize_filename(base)
     out_file_base = f"{sanitized_base}.{chosen_format}"
 
     # Избегаем перезаписи существующего файла

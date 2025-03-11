@@ -1,4 +1,5 @@
 # /convertor_server.py
+import urllib.parse
 import json
 from dateutil import parser
 import logging
@@ -6,7 +7,7 @@ import sys
 from flask import Flask, request, jsonify, send_from_directory,send_file
 import os
 # from .tasks import triger_download
-from app.tasks import triger_download,transcribe_audio_task,download_and_extract_fragment
+from app.tasks import triger_download_audio,transcribe_audio_task,download_and_extract_fragment,download_video_task
 from app.youtube_service import (
     fetch_channel_videos, 
     fetch_playlist_videos, 
@@ -14,7 +15,7 @@ from app.youtube_service import (
     get_channel_playlists, 
     fetch_video_details,
     search_channels,
-    get_youtube_video_id_from_url
+    get_youtube_video_id_from_url,
 )
 from flask_cors import CORS
 from app import SessionLocal
@@ -23,13 +24,17 @@ from celery.result import AsyncResult
 from app.celery_app import celery
 from app.models.models import Transcript, User, UserTranscript, DownloadFragment
 from app.services.database_service import get_session
+from app.services.convertor_service import transliterate
 from flask_jwt_extended import JWTManager
 from dotenv import load_dotenv
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
+import yt_dlp
+
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY")
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = False  
 jwt = JWTManager(app)
@@ -163,7 +168,7 @@ def transcript_video():
 
     # Запуск Celery-цепочки
     workflow = chain(
-        triger_download.s(video_id,user_id),
+        triger_download_audio.s(video_id,user_id),
         transcribe_audio_task.s() 
     )
     
@@ -260,27 +265,6 @@ def search_channel():
 #         "state": res.state,
 #         "result": res.result
 #     })
-
-@app.route('/download_audio/<task_id>', methods=['GET'])
-def download_audio(task_id):
-    from app.celery_app import celery
-    res = celery.AsyncResult(task_id)
-
-    # Check that task is done
-    if res.state == 'SUCCESS':
-        audio_filepath = res.result  # e.g. /app/convertorData/video_name.ogg
-        if audio_filepath and os.path.exists(audio_filepath):
-            directory = os.path.dirname(audio_filepath)
-            filename = os.path.basename(audio_filepath)
-            # Return the file as an attachment (i.e., "download" in browser)
-            return send_from_directory(directory, filename, as_attachment=True)
-        else:
-            return jsonify({"error": "File not found on server"}), 404
-    else:
-        return jsonify({
-            "error": "Task not in SUCCESS state",
-            "state": res.state
-        }), 400
 
 
 @app.route('/youtube/get_channel_playlists/<channel_id>',methods=['GET'])
@@ -447,75 +431,8 @@ def add_user_transcript():
 
     return jsonify({"message": "success","already_linked": True}), 201
 
-@app.route('/download_fragment', methods=['POST'])
-@jwt_required()
-def download_fragment():
-    """
-    Эндпоинт для скачивания фрагмента YouTube-видео.
 
-    Ожидает JSON с полями:
-        - video_url: URL видео на YouTube
-        - start_time: Время начала фрагмента (формат HH:MM:SS)
-        - end_time: Время окончания фрагмента (формат HH:MM:SS)
-    """
-    user_id = get_jwt_identity()
-    data = request.get_json()
 
-    video_url = data.get('video_url')
-    start_time = data.get('start_time')
-    end_time = data.get('end_time')
-
-    if not all([video_url, start_time, end_time]):
-        return jsonify({"error": "video_url, start_time и end_time обязательны"}), 400
-
-    # Валидация формата времени
-    def validate_time_format(time_str):
-        try:
-            parts = time_str.split(':')
-            if len(parts) != 3:
-                return False
-            h, m, s = map(int, parts)
-            return 0 <= m < 60 and 0 <= s < 60
-        except:
-            return False
-
-    if not (validate_time_format(start_time) and validate_time_format(end_time)):
-        return jsonify({"error": "start_time и end_time должны быть в формате HH:MM:SS"}), 400
-
-    # Инициирование задачи Celery
-    task = download_and_extract_fragment.apply_async(args=[video_url, start_time, end_time, user_id])
-
-    return jsonify({"message": "Задача инициирована", "task_id": task.id}), 202
-
-@app.route('/download_fragment_result/<task_id>', methods=['GET'])
-def download_fragment_result(task_id):
-    """
-    Эндпоинт для скачивания результата фрагментации видео.
-
-    :param task_id: ID задачи Celery.
-    """
-    task = AsyncResult(task_id, app=celery)
-
-    if task.state == 'PENDING':
-        return jsonify({"status": "PENDING"}), 202
-    elif task.state == 'FAILURE':
-        return jsonify({"status": "FAILURE", "error": str(task.info)}), 400
-    elif task.state == 'SUCCESS':
-        fragment_path = task.result
-        if not os.path.exists(fragment_path):
-            return jsonify({"status": "ERROR", "error": "Файл не найден"}), 404
-
-        # Проверка принадлежности файла пользователю
-        # expected_path = os.path.join("downloads", user_id)
-        # if not fragment_path.startswith(os.path.abspath(expected_path)):
-        #     return jsonify({"status": "ERROR", "error": "Доступ запрещён"}), 403
-
-        return send_file(fragment_path, as_attachment=True)
-
-    else:
-        # Для состояний 'STARTED', 'RETRY'
-        return jsonify({"status": task.state}), 202
-    
 @app.route('/user_downloads', methods=['GET'])
 @jwt_required()
 def user_downloads():
@@ -550,6 +467,322 @@ def user_downloads():
     except Exception as e:
         app.logger.error(f"Ошибка при обработке /user_downloads: {e}")
         return jsonify({"error": "Внутренняя ошибка сервера"}), 500
-# gunicorn точка входа останется такой же
+    
+
+# ================================================================
+# ===================== FRAGMENT ENDPOINTS =======================
+# ================================================================
+@app.route('/download_fragment', methods=['POST'])
+@jwt_required()
+def download_fragment():
+    """
+    Ожидает JSON:
+      {
+        "file_path": "/app/convertorData/1/selected_format_video.mp4",  # уже скачанный файл
+        "start_time": "00:00:05",
+        "end_time": "00:00:15"
+      }
+    Запускает Celery-задачу, которая вырежет фрагмент.
+    """
+    from app.tasks import download_and_extract_fragment_local
+    user_id = get_jwt_identity()
+    data = request.get_json()
+
+    file_path = data.get('file_path')
+    start_time = data.get('start_time')
+    end_time = data.get('end_time')
+
+    if not all([file_path, start_time, end_time]):
+        return jsonify({"error": "file_path, start_time, end_time are required"}), 400
+
+    # Инициируем задачу Celery
+    task = download_and_extract_fragment_local.apply_async(args=[file_path, start_time, end_time, user_id])
+    return jsonify({"message": "Fragment task initiated", "task_id": task.id}), 202
+
+
+
+# ================================================================
+# ===================== AUDIO ENDPOINTS ==========================
+# ================================================================
+
+@app.route('/download_audio', methods=['POST','GET'])
+@jwt_required()
+def download_audio_endpoint():
+    """
+    1) Принимает JSON: {"video_id": "..."} или {"video_url": "..."}
+    2) Запускает Celery-задачу на скачивание (triger_download).
+    3) Возвращает task_id и статус 202.
+    """
+    user_id = get_jwt_identity()
+    data = request.get_json() or {}
+
+    # Если вы в задаче используете "video_id", а не "video_url",
+    # можно назвать это поле "video_id".
+    video_id = data.get('video_id')  
+    if not video_id:
+        return jsonify({"error": "video_id is required"}), 400
+
+    # Запускаем Celery-задачу
+    task = triger_download_audio.apply_async(args=[video_id, user_id])
+
+    return jsonify({
+        "message": "Аудио скачивается",
+        "task_id": task.id
+    }), 202
+
+
+@app.route('/download_audio_status/<task_id>', methods=['GET'])
+@jwt_required()
+def download_audio_status(task_id):
+    """
+    Узнаём статус Celery-задачи скачивания видео (triger_download).
+    Возвращаем JSON:
+      - { "status": "PROGRESS", "percent": 42, ... } или
+      - { "status": "SUCCESS" } и т.д.
+    """
+    task = AsyncResult(task_id, app=celery)
+    
+    if task.state == 'PENDING':
+        return jsonify({"status": "PENDING"}), 202
+
+    elif task.state == 'PROGRESS':
+        meta = task.info or {}
+        return jsonify({
+            "status": "PROGRESS",
+            "percent": meta.get("percent", 0),
+            "step": meta.get("step", "")
+        }), 202
+
+    elif task.state == 'FAILURE':
+        return jsonify({
+            "status": "FAILURE",
+            "error": str(task.info)
+        }), 400
+
+    elif task.state == 'SUCCESS':
+        # В SUCCESS в task.result = {"audio_file_path": "...", "videoId": ...}
+        return jsonify({
+            "status": "SUCCESS"
+        }), 200
+
+    else:
+        # STARTED / RETRY...
+        return jsonify({"status": task.state}), 202
+
+
+@app.route('/get_downloaded_audio/<task_id>', methods=['GET'])
+@jwt_required()
+def get_downloaded_audio(task_id):
+    """
+    Возвращает полное скачанное видео (если задача SUCCESS).
+    """
+    task = AsyncResult(task_id, app=celery)
+    if task.state != 'SUCCESS':
+        # Можно вернуть 404 или 202, в зависимости от того, что вам нужно
+        return jsonify({"error": f"Задача не в состоянии SUCCESS, а {task.state}"}), 400
+
+    result = task.result or {}
+    logger.debug(f"get_downloaded_audio celery_tasker result: {result}")
+    video_path = result.get('audio_file_path')  # Или 'video_file_path' - смотря что у вас возвращает triger_download
+    if not video_path or not os.path.exists(video_path):
+        return jsonify({"error": "Файл не найден на диске"}), 404
+
+    # Можно проверить, что user_id = get_jwt_identity() совпадает с путём...
+    # if str(user_id) not in video_path: ...
+
+    # Возвращаем файл для проигрывания/скачивания
+    # Если хотим отдать для <video>, лучше не использовать "as_attachment=True"
+    # Тогда клиент сможет воспроизводить поток
+    return send_file(video_path)
+
+
+@app.route('/video_qualities', methods=['GET'])
+@jwt_required()
+def list_video_qualities():
+    """
+    Возвращает список форматов, где vcodec != 'none'.
+    При этом для каждого формата формируем строку 'video_id+best_audio_id',
+    чтобы при скачивании видео и аудио объединились в итоговом файле.
+    Фильтрует разрешения в диапазоне от 360 до 1080.
+    """
+    try:
+        # Логируем входящий запрос
+        user_id = get_jwt_identity()
+        video_url = request.args.get('video_url')
+        logger.error(f"video_url: {video_url}")
+        if not video_url:
+            return jsonify({"error": "video_url is required"}), 400
+
+        # Упрощенные параметры для yt_dlp
+        ydl_opts = {
+            'quiet': True,
+            'nocheckcertificate': True,
+            'skip_download': True,
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.75 Safari/537.36',
+        }
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                logger.info(f"Extracting info for: {video_url}")
+                info = ydl.extract_info(video_url, download=False)
+        except Exception as ydl_error:
+            logger.error(f"yt_dlp error: {str(ydl_error)}")
+            return jsonify({"error": f"Could not process video URL: {str(ydl_error)}"}), 422
+
+        if not info:
+            logger.error("No info was extracted from the URL")
+            return jsonify({"error": "No info could be extracted from the URL"}), 422
+
+        all_formats = info.get('formats', [])
+        if not all_formats:
+            logger.error("No formats found in extracted info")
+            return jsonify({"error": "No formats found for this video"}), 422
+
+        # 1) Выберем лучший аудиоформат
+        audio_formats = [f for f in all_formats if f.get('acodec', 'none') != 'none']
+        if not audio_formats:
+            logger.warning("No audio formats found")
+            best_audio_id = None
+        else:
+            best_audio = max(audio_formats, key=lambda f: f.get('abr') or 0)
+            best_audio_id = best_audio['format_id']
+            logger.info(f"Best audio format: {best_audio_id}")
+
+        # 2) Форматы только с видео
+        video_formats = [f for f in all_formats if f.get('vcodec', 'none') != 'none']
+        if not video_formats:
+            logger.error("No video formats found")
+            return jsonify({"error": "No video formats found for this URL"}), 422
+
+        # 3) Фильтруем видео от 360 до 1080
+        filtered_video_formats = []
+        for vf in video_formats:
+            height = vf.get('height')
+            if height and 360 <= height <= 1080:
+                filtered_video_formats.append(vf)
+        
+        if not filtered_video_formats:
+            logger.warning("No formats found in the 360-1080 range")
+            # Если не нашлось форматов в указанном диапазоне, вернем все форматы
+            filtered_video_formats = video_formats
+
+        # 4) Собираем комбинированный format_id
+        result_formats = []
+        for vf in filtered_video_formats:
+            v_id = vf.get("format_id")
+            combined_id = f"{v_id}+{best_audio_id}" if best_audio_id else v_id
+            result_formats.append({
+                "format_id": combined_id,
+                "resolution": vf.get("resolution"),
+                "width": vf.get("width"),
+                "height": vf.get("height"),
+                "fps": vf.get("fps"),
+                "filesize": vf.get("filesize"),
+                "format_note": vf.get("format_note"),
+            })
+
+        logger.info(f"Found {len(result_formats)} video formats in 360-1080 range")
+        return jsonify({
+            "video_title": info.get("title"),
+            "formats": result_formats
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Unexpected error processing video URL: {str(e)}")
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
+
+# ================================================================
+# ===================== VIDEO ENDPOINTS ==========================
+# ================================================================
+
+
+@app.route('/download_video', methods=['POST'])
+@jwt_required()
+def download_video_endpoint():
+    """
+    1) Принимает JSON: {"video_url": "...", "format_id": "..."}
+    2) Запускает Celery-задачу на скачивание (download_video_task).
+    3) Возвращает task_id и статус 202.
+    """
+    user_id = get_jwt_identity()
+    data = request.get_json() or {}
+
+    video_url = data.get('video_url')
+    format_id = data.get('format_id')
+
+    if not video_url:
+        return jsonify({"error": "video_url is required"}), 400
+    if not format_id:
+        return jsonify({"error": "format_id is required"}), 400
+
+    task = download_video_task.apply_async(args=[video_url, format_id, user_id])
+    return jsonify({
+        "message": "Видео скачивается",
+        "task_id": task.id
+    }), 202
+
+@app.route('/download_video_status/<task_id>', methods=['GET'])
+@jwt_required()
+def download_video_status(task_id):
+    """
+    Узнаём статус Celery-задачи скачивания видео (download_video_task).
+    """
+    task = AsyncResult(task_id, app=celery)
+
+    if task.state == 'PENDING':
+        return jsonify({"status": "PENDING"}), 202
+    elif task.state == 'PROGRESS':
+        meta = task.info or {}
+        return jsonify({
+            "status": "PROGRESS",
+            "percent": meta.get("percent", 0),
+            "step": meta.get("step", "")
+        }), 202
+    elif task.state == 'FAILURE':
+        return jsonify({
+            "status": "FAILURE",
+            "error": str(task.info)
+        }), 400
+    elif task.state == 'SUCCESS':
+        return jsonify({
+            "status": "SUCCESS"
+        }), 200
+    else:
+        return jsonify({"status": task.state}), 202
+
+
+@app.route('/get_downloaded_video/<task_id>', methods=['GET'])
+@jwt_required()
+def get_downloaded_video(task_id):
+    """
+    Возвращает готовый видеофайл (если задача в SUCCESS).
+    """
+    task = AsyncResult(task_id, app=celery)
+    logger.error(f'get_downloaded_videostate:{task.state} result:{task.result}')
+    if task.state != 'SUCCESS':
+        return jsonify({"error": f"Задача не в состоянии SUCCESS, а {task.state}"}), 400
+
+    result = task.result or {}
+    video_path = result.get('file_path')
+    print("video_path:",video_path)
+    logger.error(f"get_downloaded_video , video_path: {video_path}, result:{result}")
+    if not video_path or not os.path.exists(video_path):
+        return jsonify({"error": "Файл не найден на диске"}), 404
+    
+    filename = os.path.basename(video_path)
+
+    return send_file(
+        video_path,
+        as_attachment=True,
+        download_name=filename,
+        etag=True,
+        max_age=0
+    )
+
+
+    
+    
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
