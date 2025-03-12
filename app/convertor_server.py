@@ -553,7 +553,8 @@ def download_audio_endpoint():
 
     # Если вы в задаче используете "video_id", а не "video_url",
     # можно назвать это поле "video_id".
-    video_id = data.get('video_id')  
+    video_url = data.get('video_url')  
+    video_id = get_youtube_video_id_from_url(video_url)
     if not video_id:
         return jsonify({"error": "video_id is required"}), 400
 
