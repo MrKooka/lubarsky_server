@@ -1,3 +1,4 @@
+#./app/services/progress_logging_service.py
 import os
 import uuid
 import logging
@@ -10,7 +11,7 @@ def setup_ytdlp_logger_for_task(
 ) -> tuple[logging.Logger, str]:
     """
     Создаёт и настраивает отдельный logger для yt_dlp, 
-    который пишет в уникальный лог-файл на основе task_id.
+    который пишет в уникальный лог-файл на основе task_id.  
     :param task_id: Идентификатор задачи. Если не задан, генерируется uuid4.
     :param log_dir: Папка для лог-файлов (по умолчанию "/app/convertorData/logs").
     :param prefix: Префикс в названии лог-файла ("download" по умолчанию).

@@ -77,3 +77,29 @@ def to_ascii(s: str) -> str:
     # Разрешаем буквы, цифры, точки, подчёркивания, дефисы
     ascii_str = re.sub(r'[^a-zA-Z0-9._-]+', '_', ascii_str)
     return ascii_str
+
+def format_time_for_ffmpeg(seconds):
+    """
+    Форматирует время в секундах в формат HH:MM:SS.mmm для ffmpeg
+    
+    Параметры:
+        seconds (float or str): Время в секундах
+        
+    Возвращает:
+        str: Отформатированное время в формате HH:MM:SS.mmm
+    """
+    # Преобразуем входное значение в float, если это строка
+    if isinstance(seconds, str):
+        try:
+            seconds = float(seconds)
+        except ValueError:
+            # Если строка уже в формате HH:MM:SS, просто возвращаем её
+            if ":" in seconds:
+                return seconds
+            raise ValueError(f"Невозможно преобразовать '{seconds}' в число с плавающей точкой")
+    
+    # Теперь выполняем расчёты с числом
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = seconds % 60
+    return f"{hours:02d}:{minutes:02d}:{secs:06.3f}"

@@ -653,24 +653,19 @@ def extract_video_fragment(input_video: str, output_fragment: str, start_time: s
     
     :param input_video: Путь к исходному видеофайлу.
     :param output_fragment: Путь для сохранения фрагмента.
-    :param start_time: Время начала фрагмента (формат HH:MM:SS).
-    :param end_time: Время окончания фрагмента (формат HH:MM:SS).
+    :param start_time: Время начала фрагмента (формат HH:MM:SS или HH:MM:SS.mmm).
+    :param end_time: Время окончания фрагмента (формат HH:MM:SS или HH:MM:SS.mmm).
     """
     logger.info(f"Extracting video fragment from {input_video} to {output_fragment}")
     
-    # Расчёт длительности фрагмента
-    fmt = '%H:%M:%S'
-    t_start = datetime.datetime.strptime(start_time, fmt)
-    t_end = datetime.datetime.strptime(end_time, fmt)
-    duration = (t_end - t_start).seconds
-    
+    # Для прямого использования FFmpeg без вычисления длительности
     cmd = [
         "ffmpeg",
         "-y",  # Перезаписывать без запроса
         "-i", input_video,
         "-ss", start_time,
-        "-t", str(duration),
-        "-c", "copy",
+        "-to", end_time,  # Используем -to вместо -t для указания конечного времени
+        "-c", "copy",     # Копируем поток без перекодирования для скорости
         output_fragment
     ]
     
@@ -686,6 +681,6 @@ def extract_video_fragment(input_video: str, output_fragment: str, start_time: s
         logger.error(f"FFmpeg stderr: {e.stderr.decode()}")
         logger.exception("FFmpeg failed to extract video fragment.")
         raise RuntimeError("Video fragment extraction failed.") from e
-
+        
 if __name__ == "__main__":
     main()

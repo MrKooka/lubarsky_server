@@ -1,19 +1,19 @@
-import React, { useEffect, useState } from "react";
+// components/DownloadProgressBar.js
+import React, { useState, useEffect } from "react";
 
 function DownloadProgressBar({ taskId, onDownloadComplete }) {
-  const [percent, setPercent] = useState(0);
-  const [status, setStatus] = useState("PENDING");
-  const [step, setStep] = useState("");
-  const [error, setError] = useState("");
+  const [progress, setProgress] = useState(0);
+  const [status, setStatus] = useState("");
+  const [step, setStep] = useState(""); // Добавляем шаг загрузки
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (!taskId) return;
 
-    const token = localStorage.getItem("access_token");
-    let intervalId;
-
     const checkProgress = async () => {
       try {
+        const token = localStorage.getItem("access_token");
+        // Исправляем URL для вашего API
         const response = await fetch(`/api/download_video_status/${taskId}`, {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -21,106 +21,70 @@ function DownloadProgressBar({ taskId, onDownloadComplete }) {
         });
 
         if (!response.ok) {
-          console.error("Error while requesting task status", response.status);
-          setError(`Error while requesting status(${response.status})`);
-          return;
+          throw new Error(`HTTP error! Status: ${response.status}`);
         }
 
         const data = await response.json();
-        setPercent(data.percent || 0);
+
+        // Используем поле percent вместо progress
+        setProgress(data.percent || 0);
         setStatus(data.status || "");
         setStep(data.step || "");
 
-        // Если есть ошибка в ответе
-        if (data.error) {
-          setError(data.error);
-        }
-
-        // Если статус "SUCCESS", сообщаем о завершении загрузки
-        if (data.status === "SUCCESS") {
+        // Проверяем статус "completed", "SUCCESS" или "DONE"
+        if (
+          data.status === "completed" ||
+          data.status === "SUCCESS" ||
+          data.status === "DONE"
+        ) {
           if (onDownloadComplete) {
             onDownloadComplete();
           }
-          clearInterval(intervalId);
+          return true;
         }
 
-        // Если статус "FAILURE", останавливаем проверку
-        if (data.status === "FAILURE") {
-          setError(data.error || "There was an error loading");
-          clearInterval(intervalId);
-        }
+        return false;
       } catch (err) {
-        console.error("Error while requesting task status", err);
-        setError("Failed to get task status");
+        console.error("Progress check error:", err);
+        setError(err.message);
+        return true; // Остановить опрос при ошибке
       }
     };
 
-    // Начальная проверка
+    // Инициируем первую проверку немедленно
     checkProgress();
 
-    // Регулярная проверка статуса каждые 2 секунды
-    intervalId = setInterval(checkProgress, 2000);
-
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
+    const interval = setInterval(async () => {
+      const shouldStop = await checkProgress();
+      if (shouldStop) {
+        clearInterval(interval);
       }
-    };
+    }, 1000);
+
+    return () => clearInterval(interval);
   }, [taskId, onDownloadComplete]);
-
-  // Определяем класс для прогресс-бара в зависимости от статуса
-  const getProgressBarClass = () => {
-    if (status === "FAILURE") return "progress-bar bg-danger";
-    if (status === "SUCCESS") return "progress-bar bg-success";
-    return "progress-bar progress-bar-striped progress-bar-animated";
-  };
-
-  // Получаем текст статуса на русском языке
-  const getStatusText = () => {
-    switch (status) {
-      case "PENDING":
-        return "Waiting...";
-      case "PROGRESS":
-        return "downloading...";
-      case "SUCCESS":
-        return "Completed";
-      case "FAILURE":
-        return "Error";
-      default:
-        return status;
-    }
-  };
 
   return (
     <div>
-      {/* Статус загрузки */}
-      <div className="d-flex justify-content-between mb-2">
-        <div>
-          <strong>Status:</strong> {getStatusText()}
-          {step && <span className="text-muted ms-2">({step})</span>}
-        </div>
-        <div>{percent}%</div>
-      </div>
-
-      {/* Прогресс-бар */}
-      <div className="progress mb-3" style={{ height: "24px" }}>
-        <div
-          className={getProgressBarClass()}
-          role="progressbar"
-          style={{ width: `${percent}%` }}
-          aria-valuenow={percent}
-          aria-valuemin={0}
-          aria-valuemax={100}
-        >
-          {percent}%
-        </div>
-      </div>
-
-      {/* Сообщение об ошибке, если есть */}
-      {error && (
-        <div className="alert alert-danger mt-2">
-          <strong>Error:</strong> {error}
-        </div>
+      {error ? (
+        <div className="alert alert-danger">{error}</div>
+      ) : (
+        <>
+          <div className="progress mb-3">
+            <div
+              className="progress-bar"
+              role="progressbar"
+              style={{ width: `${progress}%` }}
+              aria-valuenow={progress}
+              aria-valuemin="0"
+              aria-valuemax="100"
+            >
+              {progress}%
+            </div>
+          </div>
+          <p className="text-center">Status: {status}</p>
+          {step && <p className="text-center">Step: {step}</p>}
+        </>
       )}
     </div>
   );

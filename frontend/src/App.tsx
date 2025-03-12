@@ -14,7 +14,8 @@ import { Navbar, Nav, Container } from "react-bootstrap";
 import PrivateRoute from "./components/PrivateRoute";
 import DownloadFragment from "./pages/DownloadFragment";
 import UserDownloads from "./pages/UserDownloads";
-
+import DownloadAudio from "./pages/DownloadAudio";
+import DownloadVideo from "./pages/DownloadVideo";
 const App = () => {
   return (
     <>
@@ -45,8 +46,11 @@ const App = () => {
               <Nav.Link as={Link} to="/register">
                 Sing Up
               </Nav.Link>
-              <Nav.Link as={Link} to="/DownloadFragment">
-                Download Fragment
+              <Nav.Link as={Link} to="/DownloadVideo">
+                DownloadVideo
+              </Nav.Link>
+              <Nav.Link as={Link} to="/DownloadAudio">
+                DownloadAudio
               </Nav.Link>
               <Nav.Link as={Link} to="/UserDownloads">
                 UserDownloads
@@ -101,8 +105,11 @@ const App = () => {
         <Route path="/register" element={<Register />} />
         <Route element={<PrivateRoute />}>
           <Route path="/profile" element={<Profile />} />
-          <Route path="/DownloadFragment" element={<DownloadFragment />} />
+          <Route path="/DownloadVideo" element={<DownloadVideo />} />
           <Route path="/UserDownloads" element={<UserDownloads />} />
+          <Route path="/DownloadAudio" element={<DownloadAudio />} />
+          <Route path="/editor" element={<DownloadFragment />} />
+
           {/* Добавьте другие защищённые маршруты здесь */}
         </Route>
       </Routes>

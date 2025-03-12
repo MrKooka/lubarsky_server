@@ -20,7 +20,7 @@ from app.models.models import Transcript
 from app.services.transcript_service import update_transcript_status, create_or_update_transcript
 from app.services.celery_state_service import update_celery_task_state
 from app.services.database_service import get_session,create_or_update_download_fragment
-from app.services.convertor_service import progress_hook,sanitize_filename
+from app.services.convertor_service import progress_hook,sanitize_filename, format_time_for_ffmpeg
 import yt_dlp
 from celery.utils.log import get_task_logger
 from app.services.progress_logging_service import setup_ytdlp_logger_for_task
@@ -275,120 +275,6 @@ def triger_download_audio(self, video_id, user_id: str):
         "videoId": video_id
     }
 
-@celery.task(bind=True,name="app.tasks.download_and_extract_fragment")
-def download_and_extract_fragment(self, video_url: str, start_time: str, end_time: str, user_id: str):
-    """
-    Celery‑задача для скачивания видео и вырезания фрагмента.
-    Пишет прогресс в уникальный лог, парсит его в фоновом потоке,
-    обновляет Celery-task state, возвращает путь к вырезанному фрагменту.
-    """
-
-    # 1. Основной логгер для сообщений задачи
-    logger = get_task_logger(__name__)
-    logger.info(f"[Task start] user_id={user_id}, video_url={video_url}")
-
-    # 2. Генерация task_id и настройка отдельного logger для yt_dlp
-    task_id = self.request.id or str(uuid.uuid4())
-    log_dir = "/app/convertorData/logs"  
-    ytdlp_logger, log_file = setup_ytdlp_logger_for_task(task_id=task_id, log_dir=log_dir)
-    logger.info(f"Уникальный лог‑файл для yt_dlp: {log_file}")
-
-    # 3. Настраиваем фоновый поток, который будет читать проценты из лога
-    stop_event = threading.Event()
-
-    def update_progress_func(progress):
-        """Колбек, вызываемый при каждом новом значении процента (через tail_log_file)."""
-        print_progress_bar(progress)  # Опционально: вывод прогресса в консоль (на воркере)
-        update_celery_task_state(
-            task=self,
-            state="PROGRESS",
-            meta={"step": "downloading", "percent": progress},
-        )
-
-    tail_thread = threading.Thread(
-        target=tail_log_file,
-        args=(log_file, stop_event, update_progress_func),
-        daemon=True
-    )
-    tail_thread.start()
-
-    # 4. Готовим директорию для хранения результатов
-    download_path = os.path.join("/app/convertorData", user_id)
-    os.makedirs(download_path, exist_ok=True)
-
-    # 5. Генерация уникального имени для будущего фрагмента
-    fragment_filename = f"fragment_{uuid.uuid4().hex}.mp4"
-    fragment_filepath = os.path.join(download_path, fragment_filename)
-
-    # 6. Получаем метаданные видео (чтобы вытащить title и т.д.)
-    with yt_dlp.YoutubeDL({'quiet': True}) as ydl_temp:
-        info = ydl_temp.extract_info(video_url, download=False)
-    cleaned_title = sanitize_filename(info.get('title', 'video'))
-
-    # 7. Попытка скачивания и вырезания фрагмента
-    downloaded_video = None
-    try:
-        # Параметры для скачивания
-        format_str = (
-            'bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/'
-            'best[ext=mp4][height<=720]'
-        )
-        ydl_opts = {
-            'format': format_str,
-            'outtmpl': os.path.join(download_path, f"{cleaned_title}.%(ext)s"),
-            'logger': ytdlp_logger,  # Запись именно в наш уникальный лог
-            'quiet': True,
-            # 'progress_hooks': [progress_hook],  # если не нужен — убираем
-        }
-
-        logger.info("Начинаем скачивание видео...")
-        downloaded_video = download_video(
-            video_url,
-            download_path,
-            ydl_opts=ydl_opts
-        )
-        logger.info(f"Видео скачано: {downloaded_video}")
-
-        # Вырезаем фрагмент с помощью вашей функции
-        logger.info(f"Вырезаем фрагмент c {start_time} до {end_time} в файл {fragment_filepath}")
-        extract_video_fragment(downloaded_video, fragment_filepath, start_time, end_time)
-        logger.info(f"Фрагмент готов: {fragment_filepath}")
-
-        # Сохраняем в БД результат (при необходимости)
-        with get_session() as session:
-            create_or_update_download_fragment(
-                session=session,
-                user_id=user_id,
-                video_url=video_url,
-                start_time=start_time,
-                end_time=end_time,
-                fragment_path=fragment_filepath,
-            )
-
-        # (Опционально) Удаляем полное видео, если оно не нужно
-        if downloaded_video and os.path.exists(downloaded_video):
-            os.remove(downloaded_video)
-            logger.info(f"Полное видео удалено: {downloaded_video}")
-
-        logger.info("Задача download_and_extract_fragment завершена успешно.")
-        return fragment_filepath
-
-    except Exception as e:
-        logger.error(f"Ошибка в download_and_extract_fragment: {e}")
-        # Повторная попытка задачи (Celery)
-        # NB: При необходимости вы можете убрать retry
-        raise self.retry(exc=e, countdown=60, max_retries=3)
-
-    finally:
-        # 8. В любом случае (успех или ошибка) останавливаем tail и удаляем лог
-        stop_event.set()
-        tail_thread.join()
-
-        if os.path.exists(log_file):
-            os.remove(log_file)
-            logger.info(f"Уникальный лог-файл удалён: {log_file}")
-
-            
 
 
 @celery.task(bind=True, name="app.tasks.download_video_task")
@@ -470,7 +356,6 @@ def download_video_task(self, video_url: str, format_id: str, user_id: str):
             "video_url": video_url
             },
         )
-
         return None
 
     except Exception as e:
@@ -482,3 +367,155 @@ def download_video_task(self, video_url: str, format_id: str, user_id: str):
             os.remove(log_file)
 
         raise  # Пробросить, чтобы Celery зафиксировал ошибку
+
+
+
+
+
+@celery.task(bind=True, name="app.tasks.extract_fragment_")
+def extract_fragment_(self, file_path: str, start_time: float, end_time: float, user_id: str, delete_original: bool = False):
+    """
+    Celery-задача для вырезания фрагмента из уже скачанного видео.
+    Принимает путь к существующему видеофайлу и временные метки.
+    Возвращает путь к вырезанному фрагменту.
+    
+    Параметры:
+        file_path (str): Путь к исходному видеофайлу
+        start_time (float): Время начала фрагмента в секундах
+        end_time (float): Время окончания фрагмента в секундах
+        user_id (str): ID пользователя
+        delete_original (bool, optional): Флаг для удаления оригинального видео после обработки. По умолчанию False.
+    """
+    if isinstance(delete_original, str):
+        delete_original = delete_original.lower() == 'true'
+    # 1. Основной логгер для сообщений задачи
+    logger = get_task_logger(__name__)
+    logger.info(f"[Extract fragment start] user_id={user_id}, file_path={file_path}, delete_original={delete_original}")
+    
+    # 2. Обновление состояния задачи для отображения прогресса
+    self.update_state(
+        state='PROGRESS',
+        meta={
+            'status': 'PROGRESS',
+            'percent': 0,
+            'step': 'initializing'
+        }
+    )
+    
+    # 3. Проверка существования исходного файла
+    if not os.path.exists(file_path):
+        logger.error(f"Source file not found: {file_path}")
+        raise FileNotFoundError(f"Source file not found: {file_path}")
+    
+    # 4. Готовим директорию для хранения результатов
+    download_path = os.path.join("/app/convertorData", user_id)
+    os.makedirs(download_path, exist_ok=True)
+    
+    # 5. Генерация уникального имени для будущего фрагмента
+    file_name = os.path.basename(file_path)
+    fragment_filename = f"fragment_{file_name}_{uuid.uuid4().hex}.mp4"
+    fragment_filepath = os.path.join(download_path, fragment_filename)
+    
+    # 6. Обновление состояния задачи
+    self.update_state(
+        state='PROGRESS',
+        meta={
+            'status': 'PROGRESS',
+            'percent': 25,
+            'step': 'processing'
+        }
+    )
+    
+    # 7. Попытка вырезания фрагмента
+    try:
+        # Форматируем время для ffmpeg (преобразуем секунды в формат HH:MM:SS.ms)
+        start_str = format_time_for_ffmpeg(start_time)
+        end_str = format_time_for_ffmpeg(end_time)
+        
+        logger.info(f"Вырезаем фрагмент c {start_str} до {end_str} в файл {fragment_filepath}")
+        
+        # Обновление состояния задачи
+        self.update_state(
+            state='PROGRESS',
+            meta={
+                'status': 'PROGRESS',
+                'percent': 50,
+                'step': 'cutting video'
+            }
+        )
+        
+        # Вырезаем фрагмент с помощью ffmpeg
+        extract_video_fragment(file_path, fragment_filepath, start_str, end_str)
+        
+        # Обновление состояния задачи
+        self.update_state(
+            state='PROGRESS',
+            meta={
+                'status': 'PROGRESS',
+                'percent': 75,
+                'step': 'saving results'
+            }
+        )
+        
+        logger.info(f"Фрагмент готов: {fragment_filepath}")
+        
+        # Сохраняем в БД результат
+        with get_session() as session:
+            # Определяем video_url из пути к файлу или используем заглушку
+            video_url = f"local://{os.path.basename(file_path)}"
+            
+            create_or_update_download_fragment(
+                session=session,
+                user_id=user_id,
+                video_url=video_url,
+                start_time=str(start_time),
+                end_time=str(end_time),
+                fragment_path=fragment_filepath,
+            )
+        
+        # Удаляем оригинальное видео, если установлен флаг delete_original
+        if delete_original:
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    logger.info(f"Оригинальное видео удалено: {file_path}")
+                else:
+                    logger.warning(f"Оригинальное видео не найдено для удаления: {file_path}")
+            except Exception as delete_err:
+                logger.error(f"Ошибка при удалении оригинального видео: {delete_err}")
+                # Продолжаем выполнение даже при ошибке удаления оригинала
+        
+        # Обновление состояния задачи как завершенной
+        self.update_state(
+            state='SUCCESS',
+            meta={
+                'status': 'SUCCESS',
+                'percent': 100,
+                'step': 'completed',
+                'original_deleted': delete_original,
+                'fragment_path':fragment_filepath
+            }
+        )
+        
+        logger.info("Задача extract_fragment завершена успешно.")
+        return {
+            "fragment_path": fragment_filepath,
+            "start_time": start_time,
+            "end_time": end_time,
+            "original_deleted": delete_original
+        }
+        
+    except Exception as e:
+        logger.error(f"Ошибка в extract_fragment: {e}")
+        # Обновление состояния задачи с ошибкой
+        self.update_state(
+            state='FAILURE',
+            meta={
+                'status': 'FAILURE',
+                'error': str(e)
+            }
+        )
+        # Повторная попытка задачи (Celery)
+        raise self.retry(exc=e, countdown=60, max_retries=2)
+
+

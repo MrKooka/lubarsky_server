@@ -1,264 +1,453 @@
-import React, { useState } from "react";
-import DownloadProgressBar from "../components/DownloadProgressBar";
+// DownloadFragment.jsx
+import React, { useState, useRef, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import UrlInput from "../components/UrlInput";
+import DownloadStatus from "../components/DownloadStatus";
+import { useVideoApi } from "../hooks/useVideoApi";
+import useTimeControls from "../hooks/useTimeControls";
+import VideoControls from "../components/VideoControls";
+import VideoPlayer from "../components/VideoPlayer";
+import TimeEditor from "../components/TimeEditor";
 
 function DownloadFragment() {
-  const [videoUrl, setVideoUrl] = useState("");
-  const [formats, setFormats] = useState([]);
-  const [selectedFormat, setSelectedFormat] = useState("");
-  const [taskId, setTaskId] = useState(null);
+  // -- Оригинальный taskId (полное видео)
+  const [originalTaskId, setOriginalTaskId] = useState(null);
+
+  // -- Для отображения полного видео
+  const [originalVideoBlob, setOriginalVideoBlob] = useState(null);
+  const [originalVideoUrl, setOriginalVideoUrl] = useState("");
+
+  // -- Поля для заголовка видео
   const [videoTitle, setVideoTitle] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+
+  // -- Флаг, что полное видео загрузилось успешно
   const [isDownloadComplete, setIsDownloadComplete] = useState(false);
 
-  // 1) Отправляем ссылку, получаем список форматов
-  const handleSubmitUrl = async () => {
-    if (!videoUrl) return;
+  // -- Стандартные состояния
+  const [mediaUrl, setMediaUrl] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
+  // -- Удалять ли оригинальный файл на сервере после обрезки
+  const [deleteOriginal, setDeleteOriginal] = useState(false);
+
+  // -- Управление плеером (start/end time)
+  const videoRef = useRef(null);
+  const timeControls = useTimeControls(videoRef);
+
+  // -- Для опроса extract_fragment_status
+  const [fragmentTaskId, setFragmentTaskId] = useState(null);
+  const [fragmentStatus, setFragmentStatus] = useState("IDLE");
+  // Возможные значения: "IDLE" | "PENDING" | "PROGRESS" | "SUCCESS" | "FAILURE"
+
+  // -- Хук API
+  const api = useVideoApi();
+
+  // -- React Router
+  const navigate = useNavigate();
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const initialTaskId = queryParams.get("taskId");
+
+  // ===========================
+  // useEffect: Если ?taskId=... уже есть, грузим полное видео
+  // ===========================
+  useEffect(() => {
+    if (initialTaskId) {
+      setOriginalTaskId(initialTaskId);
+      setIsDownloadComplete(true);
+      loadOriginalVideo(initialTaskId);
+    }
+  }, [initialTaskId]);
+
+  // ===========================
+  // Очистка objectURL при размонтировании
+  // ===========================
+  useEffect(() => {
+    return () => {
+      if (originalVideoUrl) {
+        URL.revokeObjectURL(originalVideoUrl);
+      }
+    };
+  }, [originalVideoUrl]);
+
+  // ===========================
+  // Функция загрузки полного видео (GET /get_downloaded_video/<taskId>)
+  // ===========================
+  const loadOriginalVideo = async (someTaskId) => {
     setIsLoading(true);
-    setFormats([]);
-    setSelectedFormat("");
-    setTaskId(null);
+    setError(null);
+    try {
+      const result = await api.getDownloadedVideo(someTaskId);
+      if (!result) {
+        throw new Error("No original file returned");
+      }
+      const blobUrl = URL.createObjectURL(result.blob);
+      setOriginalVideoBlob(result.blob);
+      setOriginalVideoUrl(blobUrl);
+      setVideoTitle(result.filename || "video.mp4");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ===========================
+  // Кнопка "Download and Edit"
+  // ===========================
+  const handleDownloadVideo = async () => {
+    if (!mediaUrl) return;
+    setIsLoading(true);
+    setError(null);
     setIsDownloadComplete(false);
 
-    const token = localStorage.getItem("access_token");
+    // сброс старых данных
+    setOriginalTaskId(null);
+    setOriginalVideoBlob(null);
+    setOriginalVideoUrl("");
+    setVideoTitle("");
 
     try {
-      const response = await fetch(
-        `/api/video_qualities?video_url=${encodeURIComponent(videoUrl)}`,
-        {
+      const data = await api.downloadVideo(mediaUrl); // POST /download_video
+      if (data?.task_id) {
+        setOriginalTaskId(data.task_id);
+        navigate(`/editor?taskId=${data.task_id}`, { replace: true });
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ===========================
+  // Кнопка "Cut Video"
+  // ===========================
+  const handleCutVideo = async () => {
+    if (!originalTaskId) return;
+    if (timeControls.startTime >= timeControls.endTime) {
+      alert("Start time >= End time!");
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // 1) Запускаем POST /cut_video
+      const data = await api.cutVideo(
+        originalTaskId,
+        timeControls.startTime,
+        timeControls.endTime,
+        deleteOriginal
+      );
+      if (!data || !data.task_id) {
+        throw new Error("No fragment task_id returned from cutVideo");
+      }
+      const newFragId = data.task_id;
+      setFragmentTaskId(newFragId);
+      setFragmentStatus("PENDING"); // начнём polling статуса
+
+      // 2) Запускаем опрос extract_fragment_status
+      pollExtractFragmentStatus(newFragId);
+
+      // (не меняем URL, чтобы не перезагружать full-video)
+      // Если хотите, можно вызвать navigate(`/editor?taskId=${newFragId}`).
+
+      // Просто уведомим:
+      console.log("Cut video started, new fragmentId =", newFragId);
+    } catch (err) {
+      setError(err.message);
+      setFragmentTaskId(null);
+      setFragmentStatus("FAILURE");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ===========================
+  // Функция polling для /extract_fragment_status
+  // ===========================
+  const pollExtractFragmentStatus = async (taskId) => {
+    let attempts = 0;
+    const maxAttempts = 30;
+    const pollInterval = 2000;
+
+    async function checkStatus() {
+      try {
+        const resp = await fetch(`/api/extract_fragment_status/${taskId}`, {
           method: "GET",
           headers: {
-            Authorization: `Bearer ${token}`,
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
           },
+        });
+        if (!resp.ok) {
+          setFragmentStatus("FAILURE");
+          return;
         }
-      );
 
-      if (!response.ok) {
-        console.error("Error getting formats:", response.status);
-        setIsLoading(false);
-        return;
+        const data = await resp.json();
+        if (data.status === "SUCCESS") {
+          setFragmentStatus("SUCCESS");
+          return; // Останавиваем polling (нет setTimeout)
+        }
+        if (data.status === "FAILURE") {
+          setFragmentStatus("FAILURE");
+          return; // Останавливаем
+        }
+
+        // Если PENDING или PROGRESS
+        setFragmentStatus(data.status);
+
+        // Проверяем, не превысили ли мы максимальное кол-во попыток
+        attempts++;
+        if (attempts < maxAttempts) {
+          // Продолжаем polling
+          setTimeout(checkStatus, pollInterval);
+        } else {
+          // Выходим по timeout
+          setFragmentStatus("FAILURE");
+        }
+      } catch (err) {
+        console.error("Poll error:", err);
+        setFragmentStatus("FAILURE");
       }
-
-      const data = await response.json();
-      setFormats(data.formats || []);
-      setVideoTitle(data.video_title || "");
-      setIsLoading(false);
-    } catch (err) {
-      console.error("Error while requesting formats:", err);
-      setIsLoading(false);
     }
+
+    checkStatus();
   };
 
-  // 2) Выбираем формат
-  const handleSelectFormat = (e) => {
-    const formatId = e.target.value;
-    setSelectedFormat(formatId);
-  };
-
-  // 3) Запускаем скачивание и получаем task_id
-  const handleDownload = async () => {
-    if (!videoUrl || !selectedFormat) return;
-
-    const token = localStorage.getItem("access_token");
-
-    try {
-      const response = await fetch("/api/download_video", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          video_url: videoUrl,
-          format_id: selectedFormat,
-        }),
-      });
-
-      if (!response.ok) {
-        console.error("error starting download:", response.status);
-        return;
-      }
-
-      const data = await response.json();
-      setTaskId(data.task_id);
-      setIsDownloadComplete(false);
-    } catch (err) {
-      console.error("Error while requesting download_video:", err);
+  // ===========================
+  // Непосредственное скачивание "полного" видео
+  // ===========================
+  const downloadFullVideo = () => {
+    if (!originalVideoBlob || !originalVideoUrl) {
+      alert("No original video loaded.");
+      return;
     }
+    const a = document.createElement("a");
+    a.href = originalVideoUrl;
+    a.download = videoTitle || "full_video.mp4";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
-  // Обработчик для завершения загрузки
-  const handleDownloadComplete = () => {
-    setIsDownloadComplete(true);
-  };
-
-  // Скачивание файла
-  const handleDownloadFile = async () => {
-    if (!taskId) return;
-
-    const token = localStorage.getItem("access_token");
-
+  // ===========================
+  // Скачивание обрезанного файла (GET /get_fragment/<fragmentTaskId>)
+  // ===========================
+  const downloadFragmentVideo = async () => {
+    if (!fragmentTaskId) {
+      alert("No fragmentTaskId");
+      return;
+    }
+    // Сервер отдаёт сам файл
     try {
-      // Создаем временный элемент <a> для скачивания с заголовком авторизации
-      const response = await fetch(`/api/get_downloaded_video/${taskId}`, {
+      setIsLoading(true);
+      const resp = await fetch(`/api/get_fragment/${fragmentTaskId}`, {
         method: "GET",
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${localStorage.getItem("access_token")}`,
         },
       });
-
-      if (!response.ok) {
-        throw new Error(`error while downloading: ${response.status}`);
+      if (!resp.ok) {
+        throw new Error(`get_fragment error: ${resp.status}`);
       }
-
-      // Получаем blob данные из ответа
-      const blob = await response.blob();
-
-      // Создаем URL для скачивания
-      const downloadUrl = window.URL.createObjectURL(blob);
-
-      // Создаем ссылку и автоматически кликаем по ней
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.href = downloadUrl;
-
-      // Название файла можно взять из заголовков, если сервер его отправляет
-      const contentDisposition = response.headers.get("content-disposition");
-      let filename = "video.mp4"; // Имя по умолчанию
-
-      if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="?([^"]*)"?/);
-        if (filenameMatch && filenameMatch[1]) {
-          filename = filenameMatch[1];
-        }
-      }
-
-      link.download = filename;
+      link.href = url;
+      link.download = "fragment.mp4";
       document.body.appendChild(link);
       link.click();
-
-      // Removing a link from the DOM
       document.body.removeChild(link);
-
-      // Freeing the URL object
-      setTimeout(() => {
-        window.URL.revokeObjectURL(downloadUrl);
-      }, 100);
+      URL.revokeObjectURL(url);
     } catch (err) {
-      console.error("Error downloading file:", err);
-      alert("Failed to download file. Details in console.");
+      setError(`Error downloading fragment: ${err.message}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  // ===========================
+  // Обработка статуса download_video (целого файла)
+  // ===========================
+  const onDownloadComplete = () => {
+    setIsDownloadComplete(true);
+    if (originalTaskId) {
+      loadOriginalVideo(originalTaskId);
+    }
+  };
+
+  // ===========================
+  // Выбираем, какое видео показывать в плеере
+  // ===========================
+  // В этом примере мы всегда показываем только «полное» видео.
+  // Если хотите, можете автоматически грузить обрезанный blob,
+  // когда fragmentStatus=SUCCESS. Тут пока не делаем.
+  const finalVideoUrl = originalVideoUrl;
+
+  // ===========================
+  // JSX
+  // ===========================
   return (
     <div className="container mt-4">
-      <h3>Download video</h3>
+      <h3>Video Editor</h3>
+      <p className="text-muted">Cut and edit videos directly in your browser</p>
 
-      {/* 1)Link input field and button */}
-      <div className="mb-3">
-        <label className="form-label">Link to video</label>
-        <div className="input-group">
-          <input
-            type="text"
-            className="form-control"
-            placeholder="input video link"
-            value={videoUrl}
-            onChange={(e) => setVideoUrl(e.target.value)}
-          />
-          <button
-            className="btn btn-primary"
-            onClick={handleSubmitUrl}
-            disabled={isLoading || !videoUrl}
-          >
-            {isLoading ? (
-              <>
-                <span
-                  className="spinner-border spinner-border-sm me-2"
-                  role="status"
-                  aria-hidden="true"
-                ></span>
-                Loading...
-              </>
-            ) : (
-              "Получить форматы"
-            )}
-          </button>
+      {/* Ошибки */}
+      {error && (
+        <div className="alert alert-danger mb-3">
+          <strong>Error:</strong> {error}
         </div>
-      </div>
+      )}
 
-      {/* 2) Display spinner on boot */}
-      {isLoading && (
+      {/* Показываем taskId оригинала, если есть */}
+      {originalTaskId && (
+        <div className="alert alert-info mb-2">
+          <small>Original Task ID: {originalTaskId}</small>
+        </div>
+      )}
+
+      {/* Показываем taskId фрагмента, если уже есть */}
+      {fragmentTaskId && (
+        <div className="alert alert-warning mb-2">
+          <small>Fragment Task ID: {fragmentTaskId}</small>
+        </div>
+      )}
+
+      {/* Ввод URL (если нет initialTaskId) */}
+      {!initialTaskId && !originalTaskId && (
+        <UrlInput
+          url={mediaUrl}
+          setUrl={setMediaUrl}
+          onSubmit={handleDownloadVideo}
+          isLoading={isLoading}
+          label="Link to video"
+          placeholder="Input video link (YouTube, etc.)"
+          buttonText="Download and Edit"
+        />
+      )}
+
+      {/* DownloadStatus для целого видео */}
+      {originalTaskId && !isDownloadComplete && (
+        <DownloadStatus
+          taskId={originalTaskId}
+          isComplete={isDownloadComplete}
+          onDownloadClick={() => {}}
+          onDownloadComplete={onDownloadComplete}
+          mediaType="Video"
+          apiEndpoint="download_video_status"
+        />
+      )}
+
+      {/* Спиннер, если общий isLoading == true и пока нет готового видео */}
+      {isLoading && !finalVideoUrl && (
         <div className="text-center my-4">
           <div className="spinner-border text-primary" role="status">
             <span className="visually-hidden">Loading...</span>
           </div>
-          <p className="mt-2">Getting Available Formats...</p>
+          <p className="mt-2">Loading video...</p>
         </div>
       )}
 
-      {/* 3)Display formats (if any) */}
-      {!isLoading && formats.length > 0 && (
+      {/* Если есть полноценный videoUrl, показываем плеер */}
+      {finalVideoUrl && (
         <div className="card mt-4">
-          <div className="card-header">
-            <h5 className="mb-0">Available formats for: {videoTitle}</h5>
-          </div>
-          <div className="card-body">
-            <select
-              className="form-select mb-3"
-              onChange={handleSelectFormat}
-              value={selectedFormat}
-            >
-              <option value="">-- Select format --</option>
-              {formats.map((f) => (
-                <option key={f.format_id} value={f.format_id}>
-                  {f.resolution} ({f.format_id})
-                </option>
-              ))}
-            </select>
+          <VideoPlayer
+            videoRef={videoRef}
+            videoUrl={finalVideoUrl}
+            videoTitle={videoTitle}
+            onLoadedMetadata={timeControls.handleLoadedMetadata}
+            onTimeUpdate={timeControls.handleTimeUpdate}
+          />
 
-            {/* 4) Button Submit */}
-            <button
-              className="btn btn-success"
-              onClick={handleDownload}
-              disabled={!selectedFormat}
-            >
-              Download selected format
-            </button>
-          </div>
-        </div>
-      )}
+          <div className="card-footer">
+            {/* Редактор времени */}
+            <TimeEditor
+              startTime={timeControls.startTime}
+              endTime={timeControls.endTime}
+              currentTime={timeControls.currentTime}
+              duration={timeControls.duration}
+              startTimeValues={timeControls.startTimeValues}
+              endTimeValues={timeControls.endTimeValues}
+              isEditingStartTime={timeControls.isEditingStartTime}
+              isEditingEndTime={timeControls.isEditingEndTime}
+              formatTime={timeControls.formatTime}
+              onSetStartTime={timeControls.setCurrentAsStartTime}
+              onSetEndTime={timeControls.setCurrentAsEndTime}
+              onChangeStartTime={timeControls.handleStartTimeChange}
+              onChangeEndTime={timeControls.handleEndTimeChange}
+              onConfirmStartTime={timeControls.confirmStartTime}
+              onConfirmEndTime={timeControls.confirmEndTime}
+            />
 
-      {/* 5) Show progress bar if taskId is received*/}
-      {taskId && !isDownloadComplete && (
-        <div className="card mt-4">
-          <div className="card-header">
-            <h5 className="mb-0">Loading progress</h5>
-          </div>
-          <div className="card-body">
-            <DownloadProgressBar
-              taskId={taskId}
-              onDownloadComplete={handleDownloadComplete}
+            {/* Кнопки управления */}
+            <VideoControls
+              startTime={timeControls.startTime}
+              endTime={timeControls.endTime}
+              isLoading={isLoading}
+              deleteOriginal={deleteOriginal}
+              onDeleteOriginalChange={setDeleteOriginal}
+              onPreviewSegment={timeControls.previewSegment}
+              // Кнопка "Download" для полного видео
+              onDownloadVideo={downloadFullVideo}
+              // Кнопка "Cut Video"
+              onCutVideo={handleCutVideo}
             />
           </div>
         </div>
       )}
 
-      {/* 6) Кнопка скачивания после успешной загрузки */}
-      {isDownloadComplete && (
-        <div className="card mt-4 border-success">
-          <div className="card-header bg-success text-white">
-            <h5 className="mb-0">Loading completed</h5>
-          </div>
-          <div className="card-body text-center">
-            <p className="mb-3">
-              The video has been successfully uploaded and is ready for
-              download.
-            </p>
-            <button
-              className="btn btn-lg btn-primary"
-              onClick={handleDownloadFile}
-            >
-              <i className="bi bi-download me-2"></i> Download video
+      {/* Блок «Статус обрезки» с возможным спиннером 
+          Когда fragmentStatus = PENDING/PROGRESS -> показываем индикатор
+          Когда fragmentStatus = SUCCESS -> показываем кнопку Download Fragment
+      */}
+      {fragmentTaskId && (
+        <div className="mt-3 p-3 border rounded">
+          <h5>Cut fragment status:</h5>
+
+          {(fragmentStatus === "PENDING" || fragmentStatus === "PROGRESS") && (
+            <div className="d-flex align-items-center">
+              <div className="spinner-border text-success me-2" role="status" />
+              <span>Processing fragment...</span>
+            </div>
+          )}
+
+          {fragmentStatus === "FAILURE" && (
+            <div className="text-danger">
+              Error occurred while cutting fragment. See logs.
+            </div>
+          )}
+
+          {fragmentStatus === "SUCCESS" && (
+            <button className="btn btn-success" onClick={downloadFragmentVideo}>
+              Download Fragment
             </button>
+          )}
+        </div>
+      )}
+
+      {/* Если ничего не запущено, показываем инструкцию */}
+      {!initialTaskId && !originalTaskId && !isLoading && (
+        <div className="card mt-4">
+          <div className="card-header">
+            <h5 className="mb-0">How to use</h5>
+          </div>
+          <div className="card-body">
+            <ol>
+              <li>Paste a link to a video you want to edit</li>
+              <li>Click "Download and Edit" to start the download</li>
+              <li>Wait for the process to complete</li>
+              <li>Use the video player to pick start and end times</li>
+              <li>
+                Click <b>Cut Video</b> to create fragment
+              </li>
+              <li>
+                A spinner will show while the server is cutting. Once done, a{" "}
+                <b>Download Fragment</b> button appears.
+              </li>
+            </ol>
           </div>
         </div>
       )}

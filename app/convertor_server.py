@@ -7,7 +7,7 @@ import sys
 from flask import Flask, request, jsonify, send_from_directory,send_file
 import os
 # from .tasks import triger_download
-from app.tasks import triger_download_audio,transcribe_audio_task,download_and_extract_fragment,download_video_task
+from app.tasks import triger_download_audio,transcribe_audio_task,download_video_task,extract_fragment_
 from app.youtube_service import (
     fetch_channel_videos, 
     fetch_playlist_videos, 
@@ -39,12 +39,77 @@ app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY")
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = False  
 jwt = JWTManager(app)
 logger = logging.getLogger("YouTubeDownloader")
+logger.setLevel(logging.DEBUG)  # Устанавливаем уровень DEBUG для всех логов
+handler = logging.StreamHandler(sys.stdout)  # Вывод в stdout для Docker logs
+handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
+# Настройка корневого логгера для захвата всех логов
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.DEBUG)
+root_handler = logging.StreamHandler(sys.stdout)
+root_handler.setLevel(logging.DEBUG)
+root_handler.setFormatter(formatter)
+root_logger.addHandler(root_handler)
+
+# Отключаем распространение логов, чтобы избежать дублирования
+logger.propagate = False
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 
+# Добавьте этот код сразу после создания объекта app = Flask(__name__)
 
+# Настройка логгера для вывода в stdout (консоль Docker)
+import logging
+import sys
+
+# Настройка основного логгера для приложения
+app.logger.setLevel(logging.DEBUG)  # Устанавливаем уровень DEBUG для всех логов
+handler = logging.StreamHandler(sys.stdout)  # Вывод в stdout для Docker logs
+handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] [REQUEST] %(message)s')
+handler.setFormatter(formatter)
+app.logger.addHandler(handler)
+
+# Декоратор для логирования всех входящих запросов
+@app.before_request
+def log_request_info():
+    # Логируем метод и путь
+    app.logger.debug(f"Request: {request.method} {request.path}")
+    
+    # Логируем заголовки
+    headers = dict(request.headers)
+    app.logger.debug(f"Headers: {headers}")
+    
+    # Логируем параметры запроса
+    args = dict(request.args)
+    if args:
+        app.logger.debug(f"Query parameters: {args}")
+    
+    # Логируем тело запроса для POST/PUT и т.д.
+    if request.method in ['POST', 'PUT', 'PATCH'] and request.is_json:
+        try:
+            body = request.get_json()
+            app.logger.debug(f"Request JSON body: {body}")
+        except Exception as e:
+            app.logger.debug(f"Failed to parse JSON body: {str(e)}")
+    elif request.method in ['POST', 'PUT', 'PATCH']:
+        try:
+            # Для не-JSON запросов (например, form-data)
+            app.logger.debug(f"Form data: {request.form}")
+            # Если есть файлы
+            if request.files:
+                files = {k: v.filename for k, v in request.files.items()}
+                app.logger.debug(f"Files: {files}")
+            # Сырые данные, если не форма
+            if not request.form and not request.files and request.data:
+                app.logger.debug(f"Raw request data: {request.data}")
+        except Exception as e:
+            app.logger.debug(f"Error processing request body: {str(e)}")
 @app.route('/', methods=['GET'])
 def index():
     return jsonify({"message": "Hello"}), 200
@@ -469,36 +534,6 @@ def user_downloads():
         return jsonify({"error": "Внутренняя ошибка сервера"}), 500
     
 
-# ================================================================
-# ===================== FRAGMENT ENDPOINTS =======================
-# ================================================================
-@app.route('/download_fragment', methods=['POST'])
-@jwt_required()
-def download_fragment():
-    """
-    Ожидает JSON:
-      {
-        "file_path": "/app/convertorData/1/selected_format_video.mp4",  # уже скачанный файл
-        "start_time": "00:00:05",
-        "end_time": "00:00:15"
-      }
-    Запускает Celery-задачу, которая вырежет фрагмент.
-    """
-    from app.tasks import download_and_extract_fragment_local
-    user_id = get_jwt_identity()
-    data = request.get_json()
-
-    file_path = data.get('file_path')
-    start_time = data.get('start_time')
-    end_time = data.get('end_time')
-
-    if not all([file_path, start_time, end_time]):
-        return jsonify({"error": "file_path, start_time, end_time are required"}), 400
-
-    # Инициируем задачу Celery
-    task = download_and_extract_fragment_local.apply_async(args=[file_path, start_time, end_time, user_id])
-    return jsonify({"message": "Fragment task initiated", "task_id": task.id}), 202
-
 
 
 # ================================================================
@@ -781,8 +816,146 @@ def get_downloaded_video(task_id):
 
 
     
-    
+# ================================================================
+# ===================== FRAGMENT ENDPOINTS =======================
+# ================================================================
 
+@app.route('/cut_video', methods=['POST'])
+@jwt_required()
+def cut_video():
+    """
+    Вырезает фрагмент из видео.
+    Принимает JSON:
+      {
+        "task_id": "xxx",
+        "start_time": 10.5, // в секундах
+        "end_time": 20.7,   // в секундах
+        "delete_original": false // флаг для удаления оригинального видео
+      }
+    """
+    user_id = get_jwt_identity()
+    data = request.get_json()
+    logger.debug("request_data:", data)
+    logger.error("request_data:", data)
+    task_id = data.get('task_id')
+    start_time = data.get('start_time')
+    end_time = data.get('end_time')
+    delete_original = data.get('delete_original', False) # По умолчанию False, если не указано
+    
+    if not (task_id and start_time is not None and end_time is not None):
+        return jsonify({"error": "task_id, start_time, end_time are required"}), 400
+    
+    # Получаем путь к файлу из результата задачи
+    original_task = AsyncResult(task_id)
+    if not original_task.ready() or original_task.state != 'SUCCESS':
+        return jsonify({"error": f"Task is not ready or failed: {original_task.state}"}), 400
+        
+    try:
+        result = original_task.result
+        if isinstance(result, dict):
+            file_path = result.get("file_path")
+        else:
+            file_path = result
+    except Exception as e:
+        logger.error(f"Error retrieving file path from task: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+    
+    # Проверяем, что файл существует
+    if not file_path or not os.path.exists(file_path):
+        return jsonify({"error": "Video file not found"}), 404
+    
+    # Запускаем задачу на обрезку видео с передачей флага удаления оригинала
+    task = extract_fragment_.apply_async(
+        args=[file_path, start_time, end_time, user_id, delete_original]
+    )
+    
+    return jsonify({
+        "message": "Cutting video...",
+        "task_id": task.id
+    }), 202
+
+@app.route('/get_fragment/<task_id>', methods=['GET'])
+@jwt_required()
+def get_fragment(task_id):
+    """
+    Возвращает вырезанный фрагмент видео (если задача extract_fragment в SUCCESS).
+    
+    :param task_id: ID задачи extract_fragment_.
+    :return: Файл фрагмента видео или JSON с ошибкой.
+    """
+    user_id = get_jwt_identity()
+    task = AsyncResult(task_id, app=celery)
+    
+    logger.debug(f'get_fragment task state: {task.state}, result: {task.result}')
+    
+    if task.state != 'SUCCESS':
+        return jsonify({
+            "error": f"Задача вырезания фрагмента не завершена, текущий статус: {task.state}"
+        }), 400
+    
+    result = task.result or {}
+    fragment_path = result.get('fragment_path')
+    
+    logger.info(f"get_fragment, fragment_path: {fragment_path}, result: {result}")
+    
+    if not fragment_path or not os.path.exists(fragment_path):
+        return jsonify({"error": "Файл фрагмента не найден на диске"}), 404
+    
+    # Проверка, что фрагмент принадлежит запрашивающему пользователю
+    # (опционально, если у вас хранятся фрагменты в папках с user_id)
+    if str(user_id) not in fragment_path:
+        logger.warning(f"Attempted unauthorized access to fragment by user {user_id}")
+        return jsonify({"error": "У вас нет доступа к этому фрагменту"}), 403
+    
+    filename = os.path.basename(fragment_path)
+
+    # Опционально: обновить счетчик скачиваний или другие метрики
+    
+    return send_file(
+        fragment_path,
+        as_attachment=True,
+        download_name=filename,
+        etag=True,
+        max_age=0
+    )
+
+
+@app.route('/extract_fragment_status/<task_id>', methods=['GET'])
+@jwt_required()
+def extract_fragment_status(task_id):
+    """
+    Получает статус задачи вырезания фрагмента видео.
+    
+    :param task_id: ID задачи extract_fragment_.
+    :return: JSON с информацией о статусе задачи.
+    """
+    task = AsyncResult(task_id, app=celery)
+    
+    if task.state == 'PENDING':
+        return jsonify({"status": "PENDING"}), 202
+    
+    elif task.state == 'PROGRESS':
+        meta = task.info or {}
+        return jsonify({
+            "status": "PROGRESS",
+            "percent": meta.get("percent", 0),
+            "step": meta.get("step", "")
+        }), 202
+    
+    elif task.state == 'FAILURE':
+        return jsonify({
+            "status": "FAILURE",
+            "error": str(task.info)
+        }), 400
+    
+    elif task.state == 'SUCCESS':
+        return jsonify({
+            "status": "SUCCESS",
+            "fragment_path": task.result.get("fragment_path") if task.result else None
+        }), 200
+    
+    else:
+        return jsonify({"status": task.state}), 202
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
