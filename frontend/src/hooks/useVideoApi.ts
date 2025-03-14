@@ -78,57 +78,81 @@ export function useVideoApi() {
   };
 
   // Скачиваем готовый файл
-  const downloadVideoFile = async (taskId) => {
-    if (!taskId) return false;
+// В файле hooks/useVideoApi.js
 
-    setIsLoading(true);
-    setError(null);
+const downloadVideoFile = async (taskId) => {
+  if (!taskId) return false;
 
-    try {
-      const response = await fetch(`/api/get_downloaded_video/${taskId}`, {
+  setIsLoading(true);
+  setError(null);
+
+  try {
+    // Создаем ссылку на эндпоинт без запроса blob
+    const token = getToken();
+    const downloadUrl = `/api/get_downloaded_video/${taskId}`;
+    
+    // Создаем элемент <a> для скачивания
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    
+    // Так как ссылка будет напрямую на API-эндпоинт, нам нужно обработать клик
+    // чтобы добавить заголовок авторизации
+    link.setAttribute("download", "video.mp4"); // Имя файла по умолчанию
+    
+    // Перехватываем клик для добавления токена
+    link.onclick = (e) => {
+      e.preventDefault();
+      
+      // Открываем новое окно с авторизацией через fetch API
+      fetch(downloadUrl, {
         method: "GET",
         headers: {
-          Authorization: `Bearer ${getToken()}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Error: ${response.status}`);
-      }
-
-      const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = downloadUrl;
-
-      // Получаем имя файла из заголовков
-      const contentDisposition = response.headers.get("content-disposition");
-      let filename = "video.mp4";
-
-      if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="?([^"]*)"?/);
-        if (filenameMatch && filenameMatch[1]) {
-          filename = filenameMatch[1];
+          Authorization: `Bearer ${token}`
         }
-      }
-
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      setTimeout(() => {
-        window.URL.revokeObjectURL(downloadUrl);
-      }, 100);
-
-      return true;
-    } catch (err) {
-      setError(err.message);
-      return false;
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      })
+      .then(response => {
+        // Проверяем успешность запроса
+        if (!response.ok) {
+          throw new Error(`Error: ${response.status}`);
+        }
+        
+        // Получаем имя файла из заголовка Content-Disposition, если оно есть
+        const contentDisposition = response.headers.get("content-disposition");
+        let filename = "video.mp4";
+        
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename="?([^"]*)"?/);
+          if (filenameMatch && filenameMatch[1]) {
+            filename = filenameMatch[1];
+          }
+        }
+        
+        // Открываем новое окно с URL для скачивания
+        const downloadWindow = window.open(`${downloadUrl}?token=${token}`, '_blank');
+        
+        // Если блокировщик всплывающих окон предотвратил открытие, 
+        // предлагаем пользователю скачать вручную
+        if (!downloadWindow || downloadWindow.closed || typeof downloadWindow.closed === 'undefined') {
+          alert("Please allow pop-ups for this website to download the video, or click this button again to manually download.");
+        }
+      })
+      .catch(err => {
+        setError(err.message);
+      });
+    };
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    return true;
+  } catch (err) {
+    setError(err.message);
+    return false;
+  } finally {
+    setIsLoading(false);
+  }
+};
   const getDownloadedVideo = async (taskId) => {
     if (!taskId) return null;
 

@@ -80,19 +80,37 @@ function DownloadFragment() {
     setError(null);
 
     // Создаем URL для видео без загрузки всего файла
+    // Добавляем токен авторизации в URL для HTML5 video player
+    const token = localStorage.getItem("access_token");
     const videoUrl = `${API_BASE_URL}/get_downloaded_video/${someTaskId}`;
     setOriginalVideoUrl(videoUrl);
+
     // Очищаем blob, так как больше не храним видео в памяти
     setOriginalVideoBlob(null);
 
     // Получаем только метаданные о файле отдельным запросом
-    fetch(`${API_BASE_URL}/get_video_metadata/${someTaskId}`)
-      .then((res) => res.json())
-      .then((metadata) => {
-        setVideoTitle(metadata.filename || "video.mp4");
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setIsLoading(false));
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/get_video_metadata/${someTaskId}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!res.ok) {
+        throw new Error(`Failed to fetch metadata: ${res.status}`);
+      }
+
+      const metadata = await res.json();
+      setVideoTitle(metadata.filename || "video.mp4");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // ===========================
@@ -420,9 +438,9 @@ function DownloadFragment() {
       )}
 
       {/* Блок «Статус обрезки» с возможным спиннером 
-          Когда fragmentStatus = PENDING/PROGRESS -> показываем индикатор
-          Когда fragmentStatus = SUCCESS -> показываем кнопку Download Fragment
-      */}
+              Когда fragmentStatus = PENDING/PROGRESS -> показываем индикатор
+              Когда fragmentStatus = SUCCESS -> показываем кнопку Download Fragment
+          */}
       {fragmentTaskId && (
         <div className="mt-3 p-3 border rounded">
           <h5>Cut fragment status:</h5>

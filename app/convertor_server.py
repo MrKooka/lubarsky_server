@@ -4,7 +4,7 @@ import json
 from dateutil import parser
 import logging
 import sys
-from flask import Flask, request, jsonify, send_from_directory,send_file,Response
+from flask import Flask, request, jsonify, send_from_directory,send_file,Response,redirect, url_for
 import os
 # from .tasks import triger_download
 from app.tasks import triger_download_audio,transcribe_audio_task,download_video_task,extract_fragment_
@@ -1113,5 +1113,16 @@ def get_downloaded_video(task_id):
         etag=True,
         conditional=True
     )
+
+@app.route('/download_redirect/<task_id>/<token>', methods=['GET'])
+def download_redirect(task_id, token):
+    # Проверяем токен
+    try:
+        jwt.decode(token, app.config["JWT_SECRET_KEY"], algorithms=["HS256"])
+    except:
+        return jsonify({"error": "Invalid token"}), 401
+    
+    # Перенаправляем на скачивание
+    return redirect(url_for('get_downloaded_video', task_id=task_id))
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
