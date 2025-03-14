@@ -1,10 +1,10 @@
 # /convertor_server.py
-import urllib.parse
+import re
 import json
 from dateutil import parser
 import logging
 import sys
-from flask import Flask, request, jsonify, send_from_directory,send_file
+from flask import Flask, request, jsonify, send_from_directory,send_file,Response
 import os
 # from .tasks import triger_download
 from app.tasks import triger_download_audio,transcribe_audio_task,download_video_task,extract_fragment_
@@ -24,7 +24,7 @@ from celery.result import AsyncResult
 from app.celery_app import celery
 from app.models.models import Transcript, User, UserTranscript, DownloadFragment
 from app.services.database_service import get_session
-from app.services.convertor_service import transliterate
+from app.services.convertor_service import transliterate,partial_content_generator
 from flask_jwt_extended import JWTManager
 from dotenv import load_dotenv
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
@@ -787,33 +787,33 @@ def download_video_status(task_id):
         return jsonify({"status": task.state}), 202
 
 
-@app.route('/get_downloaded_video/<task_id>', methods=['GET'])
-@jwt_required()
-def get_downloaded_video(task_id):
-    """
-    Возвращает готовый видеофайл (если задача в SUCCESS).
-    """
-    task = AsyncResult(task_id, app=celery)
-    logger.error(f'get_downloaded_videostate:{task.state} result:{task.result}')
-    if task.state != 'SUCCESS':
-        return jsonify({"error": f"Задача не в состоянии SUCCESS, а {task.state}"}), 400
+# @app.route('/get_downloaded_video/<task_id>', methods=['GET'])
+# @jwt_required()
+# def get_downloaded_video(task_id):
+#     """
+#     Возвращает готовый видеофайл (если задача в SUCCESS).
+#     """
+#     task = AsyncResult(task_id, app=celery)
+#     logger.error(f'get_downloaded_videostate:{task.state} result:{task.result}')
+#     if task.state != 'SUCCESS':
+#         return jsonify({"error": f"Задача не в состоянии SUCCESS, а {task.state}"}), 400
 
-    result = task.result or {}
-    video_path = result.get('file_path')
-    print("video_path:",video_path)
-    logger.error(f"get_downloaded_video , video_path: {video_path}, result:{result}")
-    if not video_path or not os.path.exists(video_path):
-        return jsonify({"error": "Файл не найден на диске"}), 404
+#     result = task.result or {}
+#     video_path = result.get('file_path')
+#     print("video_path:",video_path)
+#     logger.error(f"get_downloaded_video , video_path: {video_path}, result:{result}")
+#     if not video_path or not os.path.exists(video_path):
+#         return jsonify({"error": "Файл не найден на диске"}), 404
     
-    filename = os.path.basename(video_path)
+#     filename = os.path.basename(video_path)
 
-    return send_file(
-        video_path,
-        as_attachment=True,
-        download_name=filename,
-        etag=True,
-        max_age=0
-    )
+#     return send_file(
+#         video_path,
+#         as_attachment=True,
+#         download_name=filename,
+#         etag=True,
+#         max_age=0
+#     )
 
 
     
@@ -958,5 +958,160 @@ def extract_fragment_status(task_id):
     else:
         return jsonify({"status": task.state}), 202
 
+
+@app.route('/stream_video/<task_id>', methods=['GET'])
+@jwt_required()
+def stream_video(task_id):
+    """
+    Потоковая передача видео с поддержкой частичных запросов (Range)
+    """
+    task = AsyncResult(task_id, app=celery)
+    
+    if task.state != 'SUCCESS':
+        return jsonify({"error": f"Задача не в состоянии SUCCESS, а {task.state}"}), 400
+
+    result = task.result or {}
+    video_path = result.get('file_path')
+    
+    if not video_path or not os.path.exists(video_path):
+        return jsonify({"error": "Файл не найден на диске"}), 404
+    
+    file_size = os.path.getsize(video_path)
+    
+    # Обработка Range запросов для потоковой передачи
+    range_header = request.headers.get('Range', None)
+    
+    if range_header:
+        byte_start, byte_end = 0, None
+        match = re.search(r'(\d+)-(\d*)', range_header)
+        groups = match.groups()
+        
+        if groups[0]:
+            byte_start = int(groups[0])
+        if groups[1]:
+            byte_end = int(groups[1])
+            
+        if byte_end is None:
+            byte_end = file_size - 1
+            
+        length = byte_end - byte_start + 1
+        
+        resp = Response(
+            partial_content_generator(video_path, byte_start, byte_end),
+            206,
+            mimetype='video/mp4',
+            content_type='video/mp4',
+            direct_passthrough=True
+        )
+        
+        resp.headers.add('Content-Range', f'bytes {byte_start}-{byte_end}/{file_size}')
+        resp.headers.add('Accept-Ranges', 'bytes')
+        resp.headers.add('Content-Length', str(length))
+        return resp
+    
+    # Если не Range запрос, то возвращаем метаданные о файле
+    return send_file(
+        video_path,
+        mimetype='video/mp4',
+        as_attachment=False,
+        etag=True,
+        conditional=True
+    )
+
+
+@app.route('/get_video_metadata/<task_id>', methods=['GET'])
+@jwt_required()
+def get_video_metadata(task_id):
+    """
+    Возвращает только метаданные видео без самого файла.
+    """
+    task = AsyncResult(task_id, app=celery)
+    
+    if task.state != 'SUCCESS':
+        return jsonify({"error": f"Задача не в состоянии SUCCESS, а {task.state}"}), 400
+
+    result = task.result or {}
+    video_path = result.get('file_path')
+    
+    if not video_path or not os.path.exists(video_path):
+        return jsonify({"error": "Файл не найден на диске"}), 404
+    
+    filename = os.path.basename(video_path)
+    
+    # Можно добавить дополнительные метаданные, например размер файла, длительность видео и т.д.
+    file_size = os.path.getsize(video_path)
+    
+    # Если есть возможность получить длительность видео с помощью ffprobe или другой библиотеки
+    # duration = get_video_duration(video_path)
+    
+    return jsonify({
+        "filename": filename,
+        "file_size": file_size,
+        # "duration": duration,  # если доступно
+        "task_state": task.state
+    })
+
+@app.route('/get_downloaded_video/<task_id>', methods=['GET'])
+@jwt_required()
+def get_downloaded_video(task_id):
+    """
+    Возвращает готовый видеофайл с поддержкой потоковой передачи.
+    """
+    task = AsyncResult(task_id, app=celery)
+    logger.debug(f'get_downloaded_videostate:{task.state} result:{task.result}')
+    
+    if task.state != 'SUCCESS':
+        return jsonify({"error": f"Задача не в состоянии SUCCESS, а {task.state}"}), 400
+
+    result = task.result or {}
+    video_path = result.get('file_path')
+    
+    if not video_path or not os.path.exists(video_path):
+        return jsonify({"error": "Файл не найден на диске"}), 404
+    
+    filename = os.path.basename(video_path)
+    file_size = os.path.getsize(video_path)
+    
+    # Обработка Range запросов для потоковой передачи
+    range_header = request.headers.get('Range', None)
+    
+    if range_header:
+        byte_start, byte_end = 0, None
+        match = re.search(r'(\d+)-(\d*)', range_header)
+        groups = match.groups()
+        
+        if groups[0]:
+            byte_start = int(groups[0])
+        if groups[1]:
+            byte_end = int(groups[1])
+            
+        if byte_end is None:
+            byte_end = file_size - 1
+            
+        length = byte_end - byte_start + 1
+        
+        resp = Response(
+            partial_content_generator(video_path, byte_start, byte_end),
+            206,
+            mimetype='video/mp4',
+            content_type='video/mp4',
+            direct_passthrough=True
+        )
+        
+        resp.headers.add('Content-Range', f'bytes {byte_start}-{byte_end}/{file_size}')
+        resp.headers.add('Accept-Ranges', 'bytes')
+        resp.headers.add('Content-Length', str(length))
+        resp.headers.add('Content-Disposition', f'attachment; filename="{filename}"')
+        return resp
+    
+    # Если не Range запрос, отправляем весь файл с поддержкой потоковой передачи
+    return send_file(
+        video_path,
+        mimetype='video/mp4',
+        as_attachment=True,
+        download_name=filename,
+        etag=True,
+        conditional=True
+    )
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

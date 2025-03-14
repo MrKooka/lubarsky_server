@@ -103,3 +103,18 @@ def format_time_for_ffmpeg(seconds):
     minutes = int((seconds % 3600) // 60)
     secs = seconds % 60
     return f"{hours:02d}:{minutes:02d}:{secs:06.3f}"
+
+
+def partial_content_generator(path, start, end):
+    """Генератор для потоковой передачи частей файла"""
+    with open(path, 'rb') as file:
+        file.seek(start)
+        remaining = end - start + 1
+        chunk_size = 8192  # 8KB за раз
+        
+        while remaining:
+            chunk = file.read(min(chunk_size, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk

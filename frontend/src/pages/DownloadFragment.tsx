@@ -10,6 +10,7 @@ import VideoPlayer from "../components/VideoPlayer";
 import TimeEditor from "../components/TimeEditor";
 
 function DownloadFragment() {
+  const API_BASE_URL = "/api";
   // -- Оригинальный taskId (полное видео)
   const [originalTaskId, setOriginalTaskId] = useState(null);
 
@@ -77,20 +78,21 @@ function DownloadFragment() {
   const loadOriginalVideo = async (someTaskId) => {
     setIsLoading(true);
     setError(null);
-    try {
-      const result = await api.getDownloadedVideo(someTaskId);
-      if (!result) {
-        throw new Error("No original file returned");
-      }
-      const blobUrl = URL.createObjectURL(result.blob);
-      setOriginalVideoBlob(result.blob);
-      setOriginalVideoUrl(blobUrl);
-      setVideoTitle(result.filename || "video.mp4");
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
+
+    // Создаем URL для видео без загрузки всего файла
+    const videoUrl = `${API_BASE_URL}/get_downloaded_video/${someTaskId}`;
+    setOriginalVideoUrl(videoUrl);
+    // Очищаем blob, так как больше не храним видео в памяти
+    setOriginalVideoBlob(null);
+
+    // Получаем только метаданные о файле отдельным запросом
+    fetch(`${API_BASE_URL}/get_video_metadata/${someTaskId}`)
+      .then((res) => res.json())
+      .then((metadata) => {
+        setVideoTitle(metadata.filename || "video.mp4");
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setIsLoading(false));
   };
 
   // ===========================
@@ -221,13 +223,31 @@ function DownloadFragment() {
   // Непосредственное скачивание "полного" видео
   // ===========================
   const downloadFullVideo = () => {
-    if (!originalVideoBlob || !originalVideoUrl) {
+    if (!originalVideoUrl) {
       alert("No original video loaded.");
       return;
     }
+
+    // Так как теперь originalVideoUrl указывает напрямую на API,
+    // нам нужно выполнить явный запрос с заголовком Authorization
     const a = document.createElement("a");
     a.href = originalVideoUrl;
-    a.download = videoTitle || "full_video.mp4";
+    a.setAttribute("download", videoTitle || "full_video.mp4");
+
+    // Важно: добавляем токен авторизации в ссылку
+    if (localStorage.getItem("access_token")) {
+      a.setAttribute("data-token", localStorage.getItem("access_token"));
+      // Перехватываем клик, чтобы добавить заголовки
+      a.onclick = (e) => {
+        e.preventDefault();
+
+        // Используем api.downloadVideoFile для скачивания с авторизацией
+        if (originalTaskId) {
+          api.downloadVideoFile(originalTaskId);
+        }
+      };
+    }
+
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
