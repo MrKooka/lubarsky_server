@@ -1052,7 +1052,6 @@ def get_video_metadata(task_id):
     })
 
 @app.route('/get_downloaded_video/<task_id>', methods=['GET'])
-@jwt_required()
 def get_downloaded_video(task_id):
     """
     Возвращает готовый видеофайл с поддержкой потоковой передачи.
