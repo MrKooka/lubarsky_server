@@ -52,9 +52,6 @@ const App = () => {
               <Nav.Link as={Link} to="/DownloadAudio">
                 DownloadAudio
               </Nav.Link>
-              <Nav.Link as={Link} to="/UserDownloads">
-                UserDownloads
-              </Nav.Link>
             </Nav>
           </Navbar.Collapse>
         </Container>
@@ -106,7 +103,6 @@ const App = () => {
         <Route element={<PrivateRoute />}>
           <Route path="/profile" element={<Profile />} />
           <Route path="/DownloadVideo" element={<DownloadVideo />} />
-          <Route path="/UserDownloads" element={<UserDownloads />} />
           <Route path="/DownloadAudio" element={<DownloadAudio />} />
           <Route path="/editor" element={<DownloadFragment />} />
 
