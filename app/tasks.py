@@ -160,6 +160,7 @@ def triger_download_audio(self, video_id, user_id: str):
     try:
         # Настройки для аудио-загрузки
         ydl_opts = {
+            'cookies': './cookies.txt',
             'format': 'bestaudio/best',
             'outtmpl': os.path.join(download_path, f"{cleaned_title}.%(ext)s"),
             'postprocessors': [{
@@ -327,6 +328,7 @@ def download_video_task(self, video_url: str, format_id: str, user_id: str):
         # Но если format_id указывает на уже объединённый контейнер (mp4 с аудио),
         # тогда просто указываем:
         ydl_opts = {
+            'cookies': './cookies.txt',
             'format': format_id, 
             'outtmpl': os.path.join(download_path, f"{cleaned_title}_{format_id}.%(ext)s"),
             'logger': ytdlp_logger,
