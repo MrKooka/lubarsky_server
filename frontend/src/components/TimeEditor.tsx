@@ -1,3 +1,5 @@
+import React, { useState, useEffect } from "react";
+
 function TimeEditor({
   startTime,
   endTime,
@@ -5,16 +7,60 @@ function TimeEditor({
   duration,
   startTimeValues,
   endTimeValues,
-  isEditingStartTime,
-  isEditingEndTime,
   formatTime,
-  onSetStartTime,
-  onSetEndTime,
   onChangeStartTime,
   onChangeEndTime,
   onConfirmStartTime,
   onConfirmEndTime,
 }) {
+  // Состояния для отслеживания изменений и обратной связи
+  const [isStartTimeModified, setIsStartTimeModified] = useState(false);
+  const [isEndTimeModified, setIsEndTimeModified] = useState(false);
+  const [showSuccessFeedback, setShowSuccessFeedback] = useState(false);
+
+  // Сбросить индикатор успешного применения через 2 секунды
+  useEffect(() => {
+    if (showSuccessFeedback) {
+      const timer = setTimeout(() => {
+        setShowSuccessFeedback(false);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [showSuccessFeedback]);
+
+  // Обертки для обработчиков изменений
+  const handleStartTimeChange = (field, value) => {
+    setIsStartTimeModified(true);
+    onChangeStartTime(field, value);
+  };
+
+  const handleEndTimeChange = (field, value) => {
+    setIsEndTimeModified(true);
+    onChangeEndTime(field, value);
+  };
+
+  // Обработчик для кнопки Apply
+  const handleApply = () => {
+    onConfirmStartTime();
+    onConfirmEndTime();
+    setIsStartTimeModified(false);
+    setIsEndTimeModified(false);
+    setShowSuccessFeedback(true);
+  };
+
+  // Определение классов для полей ввода
+  const startTimeBorderClass = isStartTimeModified 
+    ? "border-danger" 
+    : showSuccessFeedback 
+      ? "border-success" 
+      : "";
+      
+  const endTimeBorderClass = isEndTimeModified 
+    ? "border-danger" 
+    : showSuccessFeedback 
+      ? "border-success" 
+      : "";
+
   return (
     <div className="mb-3">
       <h6>Current position: {formatTime(currentTime)}</h6>
@@ -40,115 +86,89 @@ function TimeEditor({
         ></div>
       </div>
 
-      {/* Редактор времени начала */}
-      <div className="mb-3">
-        <div className="d-flex align-items-center mb-2">
+      {/* Редактор времени в одной строке */}
+      <div className="card p-3 mb-3">
+        <div className="d-flex align-items-center flex-wrap">
+          {/* Start Time */}
+          <div className={`d-flex align-items-center me-3 mb-2 mb-md-0 ${startTimeBorderClass}`}>
+            <span className="fw-bold me-2">Start Time:</span>
+            <div className={`input-group input-group-sm ${startTimeBorderClass}`} style={{ width: "200px" }}>
+              <input
+                type="number"
+                min="0"
+                className="form-control text-center"
+                style={{ minWidth: "50px", padding: "0.375rem 0.5rem" }}
+                value={startTimeValues.hours}
+                onChange={(e) => handleStartTimeChange("hours", e.target.value)}
+              />
+              <span className="input-group-text">:</span>
+              <input
+                type="number"
+                min="0"
+                max="59"
+                className="form-control text-center"
+                style={{ minWidth: "50px", padding: "0.375rem 0.5rem" }}
+                value={startTimeValues.minutes}
+                onChange={(e) => handleStartTimeChange("minutes", e.target.value)}
+              />
+              <span className="input-group-text">:</span>
+              <input
+                type="number"
+                min="0"
+                max="59"
+                className="form-control text-center" 
+                style={{ minWidth: "50px", padding: "0.375rem 0.5rem" }}
+                value={startTimeValues.seconds}
+                onChange={(e) => handleStartTimeChange("seconds", e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* End Time */}
+          <div className={`d-flex align-items-center me-3 mb-2 mb-md-0 ${endTimeBorderClass}`}>
+            <span className="fw-bold me-2">End Time:</span>
+            <div className={`input-group input-group-sm ${endTimeBorderClass}`} style={{ width: "200px" }}>
+              <input
+                type="number"
+                min="0"
+                className="form-control text-center"
+                style={{ minWidth: "50px", padding: "0.375rem 0.5rem" }}
+                value={endTimeValues.hours}
+                onChange={(e) => handleEndTimeChange("hours", e.target.value)}
+              />
+              <span className="input-group-text">:</span>
+              <input
+                type="number"
+                min="0"
+                max="59"
+                className="form-control text-center"
+                style={{ minWidth: "50px", padding: "0.375rem 0.5rem" }}
+                value={endTimeValues.minutes}
+                onChange={(e) => handleEndTimeChange("minutes", e.target.value)}
+              />
+              <span className="input-group-text">:</span>
+              <input
+                type="number"
+                min="0"
+                max="59"
+                className="form-control text-center"
+                style={{ minWidth: "50px", padding: "0.375rem 0.5rem" }}
+                value={endTimeValues.seconds}
+                onChange={(e) => handleEndTimeChange("seconds", e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Apply Button */}
           <button
-            className="btn btn-sm btn-success me-2"
-            onClick={onSetStartTime}
+            className={`btn ${showSuccessFeedback ? 'btn-success' : 'btn-primary'} ms-auto`}
+            onClick={handleApply}
           >
-            Set Start
+            <i className={`bi ${showSuccessFeedback ? 'bi-check-lg' : 'bi-check2'}`}></i> 
+            {showSuccessFeedback ? 'Applied!' : 'Apply'}
           </button>
-          <span className="fw-bold">Start Time: {formatTime(startTime)}</span>
         </div>
-
-        {isEditingStartTime && (
-          <div className="card p-3 border-success mb-3">
-            <div className="time-editor d-flex align-items-center mb-2">
-              <div
-                className="input-group input-group-sm"
-                style={{ maxWidth: "300px" }}
-              >
-                <input
-                  type="number"
-                  min="0"
-                  className="form-control text-center"
-                  value={startTimeValues.hours}
-                  onChange={(e) => onChangeStartTime("hours", e.target.value)}
-                />
-                <span className="input-group-text">:</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="59"
-                  className="form-control text-center"
-                  value={startTimeValues.minutes}
-                  onChange={(e) => onChangeStartTime("minutes", e.target.value)}
-                />
-                <span className="input-group-text">:</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="59"
-                  className="form-control text-center"
-                  value={startTimeValues.seconds}
-                  onChange={(e) => onChangeStartTime("seconds", e.target.value)}
-                />
-              </div>
-              <button
-                className="btn btn-sm btn-outline-success ms-2"
-                onClick={onConfirmStartTime}
-              >
-                <i className="bi bi-check-lg"></i> Apply
-              </button>
-            </div>
-            <small className="text-muted">Format: hours:minutes:seconds</small>
-          </div>
-        )}
-      </div>
-
-      {/* Редактор времени окончания */}
-      <div className="mb-3">
-        <div className="d-flex align-items-center mb-2">
-          <button className="btn btn-sm btn-danger me-2" onClick={onSetEndTime}>
-            Set End
-          </button>
-          <span className="fw-bold">End Time: {formatTime(endTime)}</span>
-        </div>
-
-        {isEditingEndTime && (
-          <div className="card p-3 border-danger mb-3">
-            <div className="time-editor d-flex align-items-center mb-2">
-              <div
-                className="input-group input-group-sm"
-                style={{ maxWidth: "300px" }}
-              >
-                <input
-                  type="number"
-                  min="0"
-                  className="form-control text-center"
-                  value={endTimeValues.hours}
-                  onChange={(e) => onChangeEndTime("hours", e.target.value)}
-                />
-                <span className="input-group-text">:</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="59"
-                  className="form-control text-center"
-                  value={endTimeValues.minutes}
-                  onChange={(e) => onChangeEndTime("minutes", e.target.value)}
-                />
-                <span className="input-group-text">:</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="59"
-                  className="form-control text-center"
-                  value={endTimeValues.seconds}
-                  onChange={(e) => onChangeEndTime("seconds", e.target.value)}
-                />
-              </div>
-              <button
-                className="btn btn-sm btn-outline-danger ms-2"
-                onClick={onConfirmEndTime}
-              >
-                <i className="bi bi-check-lg"></i> Apply
-              </button>
-            </div>
-            <small className="text-muted">Format: hours:minutes:seconds</small>
-          </div>
-        )}
+        <small className="text-muted mt-2">Format: hours:minutes:seconds</small>
       </div>
     </div>
   );
