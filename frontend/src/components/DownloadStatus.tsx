@@ -41,12 +41,6 @@ function DownloadStatus({
           </div>
           <div className="card-body text-center">
             <p className="mb-3">{completeMessage}</p>
-            <button
-              className="btn btn-lg btn-primary"
-              onClick={onDownloadClick}
-            >
-              <i className="bi bi-download me-2"></i> {buttonText}
-            </button>
           </div>
         </div>
       )}

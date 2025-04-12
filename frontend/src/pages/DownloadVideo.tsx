@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useVideoApi } from "../hooks/useVideoApi";
 import FormatSelector from "../components/FormatSelector";
@@ -19,8 +19,19 @@ function DownloadVideo() {
     error,
     getVideoFormats,
     startVideoDownload,
-    downloadVideoFile,
-  } = useVideoApi();
+  } = useVideoApi(); // Убрал downloadVideoFile из деструктуризации
+
+  // Автоматический редирект после завершения загрузки
+  useEffect(() => {
+    if (isDownloadComplete && taskId) {
+      // Небольшая задержка перед редиректом, чтобы пользователь успел заметить, что загрузка завершена
+      const redirectTimer = setTimeout(() => {
+        navigate(`/editor?taskId=${taskId}`);
+      }, 1000); // 1 секунда задержки
+
+      return () => clearTimeout(redirectTimer);
+    }
+  }, [isDownloadComplete, taskId, navigate]);
 
   // 1) Отправляем ссылку, получаем список форматов
   const handleSubmitUrl = async () => {
@@ -53,18 +64,7 @@ function DownloadVideo() {
   // 4) Обработчик завершения загрузки
   const handleDownloadComplete = () => {
     setIsDownloadComplete(true);
-  };
-
-  // 5) Скачивание файла после завершения
-  const handleDownloadFile = async () => {
-    await downloadVideoFile(taskId);
-  };
-
-  // 6) Обработчик для перехода на страницу редактирования
-  const handleCutVideo = () => {
-    if (taskId) {
-      navigate(`/editor?taskId=${taskId}`);
-    }
+    // Редирект происходит автоматически благодаря useEffect выше
   };
 
   return (
@@ -100,25 +100,22 @@ function DownloadVideo() {
       <DownloadStatus
         taskId={taskId}
         isComplete={isDownloadComplete}
-        onDownloadClick={handleDownloadFile}
         onDownloadComplete={handleDownloadComplete}
         mediaType="Video"
         apiEndpoint="download_video_status"
+        // Убран проп onDownloadClick, чтобы не было возможности скачать файл
       />
 
-      {/* Кнопка Cut появляется только после завершения загрузки */}
       {isDownloadComplete && taskId && (
         <div className="card mt-4">
           <div className="card-header bg-info text-white">
-            <h5 className="mb-0">Video editing options</h5>
+            <h5 className="mb-0">Redirecting to Video Editor...</h5>
           </div>
           <div className="card-body text-center">
-            <p className="mb-3">
-              You can now edit your downloaded video or cut segments from it.
-            </p>
-            <button className="btn btn-info" onClick={handleCutVideo}>
-              <i className="bi bi-scissors me-2"></i> Cut Video
-            </button>
+            <div className="spinner-border text-info" role="status">
+              <span className="visually-hidden">Redirecting...</span>
+            </div>
+            <p className="mt-3">You will be redirected to the video editor in a moment.</p>
           </div>
         </div>
       )}
