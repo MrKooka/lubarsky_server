@@ -24,7 +24,7 @@ function FormatSelector({
           <option value="">-- Select format --</option>
           {formats.map((f) => (
             <option key={f.format_id} value={f.format_id}>
-              {f.resolution} ({f.format_id})
+              {f.resolution} ({f.filesize_mb} aprox)
             </option>
           ))}
         </select>

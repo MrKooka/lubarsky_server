@@ -118,3 +118,24 @@ def partial_content_generator(path, start, end):
                 break
             remaining -= len(chunk)
             yield chunk
+
+def convert_to_mb(filesize):
+    """
+    Конвертирует размер файла в байтах в мегабайты.
+    Возвращает строку с размером в MB с одним знаком после запятой.
+    Если размер не указан (None), возвращает "Неизвестно".
+    
+    Args:
+        filesize (int, None): Размер файла в байтах или None
+        
+    Returns:
+        str: Размер в формате "X.X MB" или "Неизвестно"
+    """
+    if filesize is None:
+        return "Неизвестно"
+    
+    # Конвертируем байты в мегабайты (1 MB = 1024*1024 байт)
+    size_in_mb = filesize / (1024 * 1024)
+    
+    # Форматируем с одним знаком после запятой
+    return f"{size_in_mb:.1f} MB"

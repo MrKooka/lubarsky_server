@@ -24,7 +24,7 @@ from celery.result import AsyncResult
 from app.celery_app import celery
 from app.models.models import Transcript, User, UserTranscript, DownloadFragment
 from app.services.database_service import get_session
-from app.services.convertor_service import transliterate,partial_content_generator
+from app.services.convertor_service import transliterate,partial_content_generator, convert_to_mb
 from flask_jwt_extended import JWTManager
 from dotenv import load_dotenv
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
@@ -636,10 +636,9 @@ def get_downloaded_audio(task_id):
 @jwt_required()
 def list_video_qualities():
     """
-    Возвращает список форматов, где vcodec != 'none'.
-    При этом для каждого формата формируем строку 'video_id+best_audio_id',
+    Возвращает список форматов с лучшим кодеком для разрешений 360p, 720p и 1080p.
+    Для каждого формата формируем строку 'video_id+best_audio_id',
     чтобы при скачивании видео и аудио объединились в итоговом файле.
-    Фильтрует разрешения в диапазоне от 360 до 1080.
     """
     try:
         # Логируем входящий запрос
@@ -651,10 +650,11 @@ def list_video_qualities():
 
         # Упрощенные параметры для yt_dlp
         ydl_opts = {
+            'cookiefile': '/app/app/www.youtube.com_cookies.txt',
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.75 Safari/537.36',
             'quiet': True,
             'nocheckcertificate': True,
             'skip_download': True,
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.75 Safari/537.36',
         }
 
         try:
@@ -690,34 +690,81 @@ def list_video_qualities():
             logger.error("No video formats found")
             return jsonify({"error": "No video formats found for this URL"}), 422
 
-        # 3) Фильтруем видео от 360 до 1080
-        filtered_video_formats = []
-        for vf in video_formats:
-            height = vf.get('height')
-            if height and 360 <= height <= 1080:
-                filtered_video_formats.append(vf)
+        # 3) Группируем форматы по высоте и выбираем только 360p, 720p и 1080p
+        target_heights = [360, 720, 1080]
+        formats_by_height = {}
         
-        if not filtered_video_formats:
-            logger.warning("No formats found in the 360-1080 range")
-            # Если не нашлось форматов в указанном диапазоне, вернем все форматы
-            filtered_video_formats = video_formats
-
-        # 4) Собираем комбинированный format_id
+        for height in target_heights:
+            # Фильтруем форматы по текущей высоте
+            height_formats = [f for f in video_formats if f.get('height') == height]
+            
+            if height_formats:
+                # Сортируем по приоритету кодеков и битрейту
+                # Приоритет: AV1 > VP9 > H.264 (AVC)
+                # В рамках одного кодека выбираем по битрейту (больше - лучше)
+                
+                # Определяем кодек для сортировки
+                def get_codec_priority(format_item):
+                    vcodec = format_item.get('vcodec', '').lower()
+                    tbr = format_item.get('tbr', 0) or 0  # Общий битрейт
+                    vbr = format_item.get('vbr', 0) or 0  # Видео битрейт
+                    
+                    # Приоритет кодеков
+                    if 'av01' in vcodec:  # AV1
+                        codec_priority = 3
+                    elif 'vp9' in vcodec:  # VP9
+                        codec_priority = 2
+                    elif 'avc' in vcodec or 'h264' in vcodec:  # H.264
+                        codec_priority = 1
+                    else:
+                        codec_priority = 0
+                    
+                    # Используем битрейт как вторичный критерий
+                    bitrate = max(tbr, vbr)
+                    
+                    return (codec_priority, bitrate)
+                
+                # Сортируем форматы по приоритету кодека и битрейту
+                best_format = max(height_formats, key=get_codec_priority)
+                formats_by_height[height] = best_format
+        
+        # 4) Собираем результат
         result_formats = []
-        for vf in filtered_video_formats:
-            v_id = vf.get("format_id")
-            combined_id = f"{v_id}+{best_audio_id}" if best_audio_id else v_id
-            result_formats.append({
-                "format_id": combined_id,
-                "resolution": vf.get("resolution"),
-                "width": vf.get("width"),
-                "height": vf.get("height"),
-                "fps": vf.get("fps"),
-                "filesize": vf.get("filesize"),
-                "format_note": vf.get("format_note"),
-            })
 
-        logger.info(f"Found {len(result_formats)} video formats in 360-1080 range")
+        for height in target_heights:
+            if height in formats_by_height:
+                vf = formats_by_height[height]
+                v_id = vf.get("format_id")
+                combined_id = f"{v_id}+{best_audio_id}" if best_audio_id else v_id
+                
+                # Определяем тип кодека для отображения пользователю
+                vcodec = vf.get('vcodec', '').lower()
+                if 'av01' in vcodec:
+                    codec_type = 'AV1'
+                elif 'vp9' in vcodec:
+                    codec_type = 'VP9'
+                elif 'avc' in vcodec or 'h264' in vcodec:
+                    codec_type = 'H.264'
+                else:
+                    codec_type = vcodec
+                
+                # Конвертируем размер файла в MB
+                file_size = vf.get("filesize")
+                size_in_mb = convert_to_mb(file_size)
+                
+                result_formats.append({
+                    "format_id": combined_id,
+                    "resolution": vf.get("resolution"),
+                    "width": vf.get("width"),
+                    "height": vf.get("height"),
+                    "fps": vf.get("fps"),
+                    "filesize": file_size,  # Оригинальный размер в байтах (для бэкенда)
+                    "filesize_mb": size_in_mb,  # Размер в MB для отображения пользователю
+                    "format_note": f"{vf.get('height')}p ({codec_type}) - {size_in_mb}",
+                    "codec": codec_type
+                })
+
+        logger.info(f"Found {len(result_formats)} unique video formats (360p, 720p, 1080p)")
         return jsonify({
             "video_title": info.get("title"),
             "formats": result_formats
