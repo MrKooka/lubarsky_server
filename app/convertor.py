@@ -714,5 +714,32 @@ def extract_audio(input_file: str, output_ext: str = "mp3") -> str:
     logger.info(f"Audio extraction successful. Output file: {output_file}")
     return output_file
         
+def remove_audio_from_video(input_file: str) -> str:
+    """
+    Remove the audio track from a video file using FFmpeg.
+
+    :param input_file: Path to the input video file.
+    :return: Path to the video file without audio.
+    """
+    logger.info(f"Removing audio from: {input_file}")
+    base, _ = os.path.splitext(input_file)
+    output_file = f"{base}_noaudio.mp4"
+
+    if os.path.exists(output_file):
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = f"{base}_noaudio_{timestamp}.mp4"
+
+    cmd = ["ffmpeg", "-y", "-i", input_file, "-an", "-c:v", "copy", output_file]
+    logger.debug(f"FFmpeg command for removing audio: {' '.join(cmd)}")
+
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        logger.exception("FFmpeg failed to remove audio.")
+        raise RuntimeError("Removing audio failed.") from e
+
+    logger.info(f"Audio removed. Output file: {output_file}")
+    return output_file
+
 if __name__ == "__main__":
     main()

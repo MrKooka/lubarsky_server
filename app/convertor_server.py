@@ -7,7 +7,14 @@ import sys
 from flask import Flask, request, jsonify, send_from_directory,send_file,Response,redirect, url_for
 import os
 # from .tasks import triger_download
-from app.tasks import triger_download_audio,transcribe_audio_task,download_video_task,extract_fragment_,extract_audio_from_video
+from app.tasks import (
+    triger_download_audio,
+    transcribe_audio_task,
+    download_video_task,
+    extract_fragment_,
+    extract_audio_from_video,
+    remove_audio_from_video_task
+)
 from app.youtube_service import (
     fetch_channel_videos, 
     fetch_playlist_videos, 
@@ -906,7 +913,112 @@ def download_video_status(task_id):
     else:
         return jsonify({"status": task.state}), 202
 
+@app.route('/remove_audio', methods=['POST'])
+@jwt_required()
+def remove_audio_endpoint():
+    """
+    1) Принимает JSON: {"task_id": "..."} - ID задачи скачанного видео
+    2) Запускает Celery-задачу на удаление аудио из уже скачанного видео
+    3) Возвращает task_id и статус 202.
+    """
+    user_id = get_jwt_identity()
+    data = request.get_json() or {}
 
+    # Получаем task_id видео
+    task_id = data.get('task_id')
+    if not task_id:
+        return jsonify({"error": "task_id is required"}), 400
+
+    # Получаем информацию о задаче скачивания видео
+    video_task = AsyncResult(task_id, app=celery)
+    logger.debug(f'remove_audio_endpoint: video_task state:{video_task.state} result:{video_task.result}')
+    
+    # Проверяем, что задача скачивания видео успешно завершена
+    if video_task.state != 'SUCCESS':
+        return jsonify({"error": f"Видео не было успешно скачано. Текущий статус: {video_task.state}"}), 400
+
+    # Получаем путь к видеофайлу из результата задачи
+    result = video_task.result or {}
+    video_path = result.get('file_path')
+    
+    # Проверяем, что файл существует
+    if not video_path or not os.path.exists(video_path):
+        return jsonify({"error": "Видеофайл не найден на диске"}), 404
+    
+    # Запускаем Celery-задачу на удаление аудио
+    task = remove_audio_from_video_task.apply_async(args=[video_path, user_id, task_id])
+
+    return jsonify({
+        "message": "Аудио удаляется из видео",
+        "task_id": task.id
+    }), 202
+
+@app.route('/remove_audio_status/<task_id>', methods=['GET'])
+@jwt_required()
+def remove_audio_status(task_id):
+    """
+    Узнаём статус Celery-задачи удаления аудио из видео.
+    Возвращаем JSON с информацией о прогрессе или ошибке.
+    """
+    task = AsyncResult(task_id, app=celery)
+    
+    if task.state == 'PENDING':
+        return jsonify({"status": "PENDING"}), 202
+
+    elif task.state == 'PROGRESS':
+        meta = task.info or {}
+        return jsonify({
+            "status": "PROGRESS",
+            "percent": meta.get("percent", 0),
+            "step": meta.get("step", "")
+        }), 202
+
+    elif task.state == 'FAILURE':
+        return jsonify({
+            "status": "FAILURE",
+            "error": str(task.info)
+        }), 400
+
+    elif task.state == 'SUCCESS':
+        return jsonify({
+            "status": "SUCCESS"
+        }), 200
+
+    else:
+        # STARTED / RETRY...
+        return jsonify({"status": task.state}), 202
+
+@app.route('/get_silent_video/<task_id>', methods=['GET'])
+@jwt_required()
+def get_silent_video(task_id):
+    """
+    Возвращает видео без аудиодорожки (если задача SUCCESS).
+    """
+    user_id = get_jwt_identity()
+    task = AsyncResult(task_id, app=celery)
+    
+    if task.state != 'SUCCESS':
+        return jsonify({"error": f"Задача не в состоянии SUCCESS, а {task.state}"}), 400
+
+    result = task.result or {}
+    video_path = result.get('silent_video_path')
+    
+    if not video_path or not os.path.exists(video_path):
+        return jsonify({"error": "Файл не найден на диске"}), 404
+    
+    # Проверка, что файл принадлежит пользователю (опционально)
+    if result.get('user_id') != user_id:
+        return jsonify({"error": "Доступ запрещен"}), 403
+    
+    filename = os.path.basename(video_path)
+    
+    # Отправляем файл клиенту
+    return send_file(
+        video_path,
+        mimetype='video/mp4',
+        as_attachment=True,
+        download_name=filename
+    )
     
 # ================================================================
 # ===================== FRAGMENT ENDPOINTS =======================

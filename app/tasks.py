@@ -10,7 +10,9 @@ from app.convertor import (
     extract_video_fragment,
     download_audio,
     download_video,
-    extract_audio
+    extract_audio,
+    remove_audio_from_video
+
 )
 import os
 import sys
@@ -412,6 +414,48 @@ def extract_audio_from_video(self, video_path, user_id, original_task_id):
     except Exception as e:
         logger.exception(f"Ошибка при извлечении аудио: {str(e)}")
         raise
+
+
+@celery.task(bind=True)
+def remove_audio_from_video_task(self, video_path, user_id, original_task_id):
+    """
+    Удаляет аудио из видеофайла.
+    
+    :param self: Celery task instance
+    :param video_path: Путь к видеофайлу
+    :param user_id: ID пользователя
+    :param original_task_id: ID задачи скачивания видео
+    :return: Словарь с путем к видеофайлу без аудио и другой информацией
+    """
+    
+    try:
+        self.update_state(state='PROGRESS', meta={'percent': 10, 'step': 'Начало удаления аудио'})
+        
+        # Проверяем существование файла
+        if not os.path.exists(video_path):
+            raise FileNotFoundError(f"Видеофайл не найден: {video_path}")
+        
+        # Удаляем аудио из видео
+        self.update_state(state='PROGRESS', meta={'percent': 30, 'step': 'Удаление аудио'})
+        silent_video_path = remove_audio_from_video(video_path)
+        
+        self.update_state(state='PROGRESS', meta={'percent': 90, 'step': 'Завершение'})
+        
+        # Проверяем, что файл без аудио успешно создан
+        if not os.path.exists(silent_video_path):
+            raise RuntimeError(f"Не удалось создать видеофайл без аудио: {silent_video_path}")
+        
+        # Возвращаем результат
+        return {
+            'silent_video_path': silent_video_path,
+            'user_id': user_id,
+            'original_task_id': original_task_id
+        }
+        
+    except Exception as e:
+        logger.exception(f"Ошибка при удалении аудио: {str(e)}")
+        raise
+
 
 @celery.task(bind=True, name="app.tasks.extract_fragment_")
 def extract_fragment_(self, file_path: str, start_time: float, end_time: float, user_id: str, delete_original: bool = False):

@@ -9,6 +9,7 @@ import useTimeControls from "../hooks/useTimeControls";
 import VideoControls from "../components/VideoControls";
 import VideoPlayer from "../components/VideoPlayer";
 import TimeEditor from "../components/TimeEditor";
+import SilentVideoDownloadStatus from "../components/SilentVideoDownloadStatus";
 
 function DownloadFragment() {
   const API_BASE_URL = "/api";
@@ -48,6 +49,12 @@ function DownloadFragment() {
   // -- Флаг для визуализации места под аудио-прогресс
   const [showAudioPlaceholder, setShowAudioPlaceholder] = useState(false);
 
+  // -- Флаг для визуализации места под silet-video-прогресс
+  const [silentVideoTaskId, setSilentVideoTaskId] = useState(null);
+  const [isSilentVideoComplete, setIsSilentVideoComplete] = useState(false);
+  const [silentVideoStatus, setSilentVideoStatus] = useState("IDLE");
+  const silentVideoIntervalRef = useRef(null);
+
   // -- Хук API
   const api = useVideoApi();
   const { startAudioDownload, downloadAudioFile, startAudioDownload_from_player_page, downloadAudioFile_from_player_page } = useAudioApi();
@@ -58,6 +65,68 @@ function DownloadFragment() {
   const queryParams = new URLSearchParams(location.search);
   const initialTaskId = queryParams.get("taskId");
 
+
+  useEffect(() => {
+    // Clear any existing interval
+    if (silentVideoIntervalRef.current) {
+      clearInterval(silentVideoIntervalRef.current);
+      silentVideoIntervalRef.current = null;
+    }
+  
+    // If there's no taskId, don't do anything
+    if (!silentVideoTaskId) {
+      return;
+    }
+  
+    // Function to check status
+    const checkStatus = async () => {
+      try {
+        const resp = await fetch(`/api/remove_audio_status/${silentVideoTaskId}`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+          },
+        });
+        
+        if (!resp.ok) {
+          setSilentVideoStatus("FAILURE");
+          clearInterval(silentVideoIntervalRef.current);
+          return;
+        }
+  
+        const data = await resp.json();
+        
+        // Update status
+        setSilentVideoStatus(data.status);
+        
+        if (data.status === "SUCCESS") {
+          setIsSilentVideoComplete(true);
+          clearInterval(silentVideoIntervalRef.current);
+        } else if (data.status === "FAILURE") {
+          clearInterval(silentVideoIntervalRef.current);
+        }
+      } catch (err) {
+        console.error("Poll error:", err);
+        setSilentVideoStatus("FAILURE");
+        clearInterval(silentVideoIntervalRef.current);
+      }
+    };
+  
+    // Initial check
+    checkStatus();
+    
+    // Set up interval
+    silentVideoIntervalRef.current = setInterval(checkStatus, 2000);
+    
+    // Cleanup on unmount or when silentVideoTaskId changes
+    return () => {
+      if (silentVideoIntervalRef.current) {
+        clearInterval(silentVideoIntervalRef.current);
+        silentVideoIntervalRef.current = null;
+      }
+    };
+  }, [silentVideoTaskId]);
+  
   // ===========================
   // useEffect: Если ?taskId=... уже есть, грузим полное видео
   // ===========================
@@ -387,7 +456,102 @@ function DownloadFragment() {
       loadOriginalVideo(originalTaskId);
     }
   };
-
+  const handleDownloadSilentVideo = async () => {
+    if (!originalTaskId) {
+      alert("No video loaded.");
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      setSilentVideoTaskId(null);
+      setIsSilentVideoComplete(false);
+      setSilentVideoStatus("IDLE"); // Reset status
+      
+      // Запускаем удаление аудио из видео
+      const silentTaskId = await api.startRemoveAudio(originalTaskId);
+      
+      if (silentTaskId) {
+        setSilentVideoTaskId(silentTaskId);
+        setSilentVideoStatus("PENDING");
+        // We don't need to call pollSilentVideoStatus anymore as the useEffect will handle it
+      } else {
+        throw new Error("Failed to start audio removal");
+      }
+    } catch (err) {
+      setError(`Error processing silent video: ${err.message}`);
+      setSilentVideoStatus("FAILURE");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // 4. Добавим функцию скачивания видео без звука
+  const handleSilentVideoDownload = async () => {
+    if (!silentVideoTaskId) {
+      alert("No silent video task ID available");
+      return;
+    }
+    
+    try {
+      await api.downloadSilentVideo(silentVideoTaskId);
+    } catch (err) {
+      setError(`Error downloading silent video: ${err.message}`);
+    }
+  };
+  const pollSilentVideoStatus = async (taskId) => {
+    let attempts = 0;
+    const maxAttempts = 30;
+    const pollInterval = 2000;
+  
+    async function checkStatus() {
+      try {
+        const resp = await fetch(`/api/remove_audio_status/${taskId}`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+          },
+        });
+        if (!resp.ok) {
+          setSilentVideoStatus("FAILURE");
+          return;
+        }
+  
+        const data = await resp.json();
+        if (data.status === "SUCCESS") {
+          setSilentVideoStatus("SUCCESS");
+          setIsSilentVideoComplete(true);
+          return; // Останавиваем polling
+        }
+        if (data.status === "FAILURE") {
+          setSilentVideoStatus("FAILURE");
+          return; // Останавливаем
+        }
+  
+        // Если PENDING или PROGRESS
+        setSilentVideoStatus(data.status);
+  
+        // Проверяем, не превысили ли мы максимальное кол-во попыток
+        attempts++;
+        if (attempts < maxAttempts) {
+          // Продолжаем polling
+          setTimeout(checkStatus, pollInterval);
+        } else {
+          // Выходим по timeout
+          setSilentVideoStatus("FAILURE");
+        }
+      } catch (err) {
+        console.error("Poll error:", err);
+        setSilentVideoStatus("FAILURE");
+      }
+    }
+  
+    checkStatus();
+  };
+  // 5. Обработчик завершения обработки видео без звука
+  const handleSilentVideoComplete = () => {
+    setIsSilentVideoComplete(true);
+  };
   // ===========================
   // Выбираем, какое видео показывать в плеере
   // ===========================
@@ -501,11 +665,15 @@ function DownloadFragment() {
               onPreviewSegment={timeControls.previewSegment}
               onDownloadVideo={downloadFullVideo}
               onDownloadAudio={handleDownloadAudio}
+              onDownloadSilentVideo={handleDownloadSilentVideo}
               onCutVideo={handleCutVideo}
               onDownloadFragment={downloadFragmentVideo}
               fragmentStatus={fragmentTaskId ? fragmentStatus : null}
               fragmentTaskId={fragmentTaskId}
+              silentVideoTaskId={silentVideoTaskId}
+              silentVideoStatus={silentVideoTaskId ? silentVideoStatus : null} // Pass the actual status
             />
+
             
             {/* Резервируем место для AudioDownloadStatus постоянно */}
             <div className="mt-3" style={{ minHeight: showAudioPlaceholder ? "70px" : "0", transition: "min-height 0.3s ease" }}>
@@ -518,6 +686,15 @@ function DownloadFragment() {
                   apiEndpoint="download_audio_status"
                 />
               ) : null}
+              {silentVideoTaskId && (
+                <SilentVideoDownloadStatus
+                  taskId={silentVideoTaskId}
+                  isComplete={isSilentVideoComplete}
+                  onDownloadClick={handleSilentVideoDownload}
+                  onDownloadComplete={handleSilentVideoComplete}
+                  apiEndpoint="remove_audio_status"
+                  />
+                )}
             </div>
           </div>
         </div>

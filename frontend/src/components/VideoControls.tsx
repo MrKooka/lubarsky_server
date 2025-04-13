@@ -8,11 +8,14 @@ function VideoControls({
   onDeleteOriginalChange,
   onPreviewSegment,
   onDownloadVideo,
-  onCutVideo,
   onDownloadAudio,
+  onDownloadSilentVideo,
+  onCutVideo,
   onDownloadFragment,
   fragmentStatus = null,
-  fragmentTaskId = null
+  fragmentTaskId = null,
+  silentVideoTaskId = null,
+  silentVideoStatus = null
 }) {
   // Определение статуса и стилей для отображения процесса обработки фрагмента
   const renderFragmentStatus = () => {
@@ -41,6 +44,40 @@ function VideoControls({
         <div className="d-flex align-items-center ms-3">
           <i className="bi bi-check-circle-fill text-success me-2"></i>
           <span className="text-success">Fragment ready</span>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  // Статус для видео без звука
+  const renderSilentVideoStatus = () => {
+    if (!silentVideoStatus) return null;
+
+    if (silentVideoStatus === "PENDING" || silentVideoStatus === "PROGRESS") {
+      return (
+        <div className="d-flex align-items-center ms-3">
+          <div className="spinner-border spinner-border-sm text-primary me-2" role="status" />
+          <span className="text-primary">Removing audio...</span>
+        </div>
+      );
+    }
+
+    if (silentVideoStatus === "FAILURE") {
+      return (
+        <div className="d-flex align-items-center ms-3">
+          <i className="bi bi-exclamation-triangle-fill text-danger me-2"></i>
+          <span className="text-danger">Audio removal failed</span>
+        </div>
+      );
+    }
+
+    if (silentVideoStatus === "SUCCESS") {
+      return (
+        <div className="d-flex align-items-center ms-3">
+          <i className="bi bi-check-circle-fill text-primary me-2"></i>
+          <span className="text-primary">Silent video ready</span>
         </div>
       );
     }
@@ -97,22 +134,32 @@ function VideoControls({
           )}
         </button>
 
-        {/* Отдельные кнопки вместо выпадающего списка */}
-        <button
-          className="btn btn-outline-secondary me-2 mb-2"
-          onClick={onDownloadVideo}
-        >
-          <i className="bi bi-film me-1"></i>
-          Full Video
-        </button>
-
-        <button
-          className="btn btn-outline-secondary me-2 mb-2"
-          onClick={onDownloadAudio}
-        >
-          <i className="bi bi-music-note-beamed me-1"></i>
-          Audio
-        </button>
+        {/* Кнопки скачивания */}
+        <div className="btn-group me-2 mb-2">
+          <button
+            className="btn btn-outline-secondary"
+            onClick={onDownloadVideo}
+          >
+            <i className="bi bi-film me-1"></i>
+            Full Video
+          </button>
+          
+          <button
+            className="btn btn-outline-secondary"
+            onClick={onDownloadAudio}
+          >
+            <i className="bi bi-music-note-beamed me-1"></i>
+            Audio
+          </button>
+          
+          <button
+            className="btn btn-outline-secondary"
+            onClick={onDownloadSilentVideo}
+          >
+            <i className="bi bi-volume-mute-fill me-1"></i>
+            No Audio
+          </button>
+        </div>
 
         {/* Кнопка Download Fragment (показывается только когда фрагмент готов) */}
         {fragmentTaskId && fragmentStatus === "SUCCESS" && (
@@ -127,6 +174,9 @@ function VideoControls({
 
         {/* Статус обработки фрагмента */}
         {renderFragmentStatus()}
+        
+        {/* Статус удаления аудио */}
+        {renderSilentVideoStatus()}
       </div>
     </div>
   );

@@ -261,15 +261,99 @@ const downloadVideoFile = async (taskId) => {
       setIsLoading(false);
     }
   };
+  const startRemoveAudio = async (taskId) => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const response = await fetch("/api/remove_audio", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify({
+          task_id: taskId,
+        }),
+      });
   
+      if (!response.ok) {
+        throw new Error(`Error: ${response.status}`);
+      }
+  
+      const data = await response.json();
+      return data.task_id;
+    } catch (err) {
+      setError(err.message);
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Скачать видео без звука
+  const downloadSilentVideo = async (taskId) => {
+    if (!taskId) return false;
+    
+    setIsLoading(true);
+    setError(null);
+  
+    try {
+      const response = await fetch(`/api/get_silent_video/${taskId}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${getToken()}`,
+        },
+      });
+  
+      if (!response.ok) {
+        throw new Error(`Error: ${response.status}`);
+      }
+  
+      // Обработка скачивания файла
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+  
+      // Получаем имя файла из заголовков
+      const contentDisposition = response.headers.get("content-disposition");
+      let filename = "silent_video.mp4";
+  
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?([^"]*)"?/);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1];
+        }
+      }
+  
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+  
+      setTimeout(() => {
+        window.URL.revokeObjectURL(downloadUrl);
+      }, 100);
+  
+      return true;
+    } catch (err) {
+      setError(err.message);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
   return {
     isLoading,
     error,
     getVideoFormats,
     startVideoDownload,
-    downloadVideoFile,  // старый метод «прямого скачивания»
-    getDownloadedVideo, // новый метод
+    downloadVideoFile, 
+    getDownloadedVideo,
     cutVideo,
-    getFragmentVideo
+    getFragmentVideo,
+    startRemoveAudio,
+    downloadSilentVideo
   };
 }
