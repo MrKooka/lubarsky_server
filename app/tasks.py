@@ -155,7 +155,7 @@ def triger_download_audio(self, video_id, user_id: str):
 
     # 6. Получаем метаданные видео (чтобы вытащить title и т.д.)
     video_url = f"https://www.youtube.com/watch?v={video_id}"
-    with yt_dlp.YoutubeDL({'quiet': True}) as ydl_temp:
+    with yt_dlp.YoutubeDL({'quiet': True,'cookiefile':'/app/app/www.youtube.com_cookies.txt','user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.75 Safari/537.36'}) as ydl_temp:
         info = ydl_temp.extract_info(video_url, download=False)
     cleaned_title = sanitize_filename(info.get('title', 'video'))
 
@@ -163,7 +163,8 @@ def triger_download_audio(self, video_id, user_id: str):
     try:
         # Настройки для аудио-загрузки
         ydl_opts = {
-            'cookies': './cookies.txt',
+            'cookiefile':'/app/app/www.youtube.com_cookies.txt',
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.75 Safari/537.36',
             'format': 'bestaudio/best',
             'outtmpl': os.path.join(download_path, f"{cleaned_title}.%(ext)s"),
             'postprocessors': [{
@@ -321,7 +322,7 @@ def download_video_task(self, video_url: str, format_id: str, user_id: str):
 
     try:
         # Выдернем title (для имени файла)
-        with yt_dlp.YoutubeDL({'quiet': True}) as ydl_temp:
+        with yt_dlp.YoutubeDL({'quiet': True,'cookiefile':'/app/app/www.youtube.com_cookies.txt','user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.75 Safari/537.36'}) as ydl_temp:
             info = ydl_temp.extract_info(video_url, download=False)
         cleaned_title = sanitize_filename(info.get('title', 'video'))
 
@@ -331,7 +332,8 @@ def download_video_task(self, video_url: str, format_id: str, user_id: str):
         # Но если format_id указывает на уже объединённый контейнер (mp4 с аудио),
         # тогда просто указываем:
         ydl_opts = {
-            'cookies': './cookies.txt',
+            'cookiefile': '/app/app/www.youtube.com_cookies.txt',
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.75 Safari/537.36',
             'format': format_id, 
             'outtmpl': os.path.join(download_path, f"{cleaned_title}_{format_id}.%(ext)s"),
             'logger': ytdlp_logger,
