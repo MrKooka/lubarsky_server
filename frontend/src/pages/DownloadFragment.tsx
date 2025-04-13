@@ -1,9 +1,10 @@
-// DownloadFragment.jsx
 import React, { useState, useRef, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import UrlInput from "../components/UrlInput";
 import DownloadStatus from "../components/DownloadStatus";
+import AudioDownloadStatus from "../components/AudioDownloadStatus";
 import { useVideoApi } from "../hooks/useVideoApi";
+import { useAudioApi } from "../hooks/useAudioApi";
 import useTimeControls from "../hooks/useTimeControls";
 import VideoControls from "../components/VideoControls";
 import VideoPlayer from "../components/VideoPlayer";
@@ -41,9 +42,16 @@ function DownloadFragment() {
   const [fragmentStatus, setFragmentStatus] = useState("IDLE");
   // Возможные значения: "IDLE" | "PENDING" | "PROGRESS" | "SUCCESS" | "FAILURE"
 
+  // -- Для опроса скачивания аудио
+  const [audioTaskId, setAudioTaskId] = useState(null);
+  const [isAudioDownloadComplete, setIsAudioDownloadComplete] = useState(false);
+  // -- Флаг для визуализации места под аудио-прогресс
+  const [showAudioPlaceholder, setShowAudioPlaceholder] = useState(false);
+
   // -- Хук API
   const api = useVideoApi();
-
+  const { startAudioDownload, downloadAudioFile, startAudioDownload_from_player_page, downloadAudioFile_from_player_page } = useAudioApi();
+  
   // -- React Router
   const navigate = useNavigate();
   const location = useLocation();
@@ -58,8 +66,17 @@ function DownloadFragment() {
       setOriginalTaskId(initialTaskId);
       setIsDownloadComplete(true);
       loadOriginalVideo(initialTaskId);
+      // Сразу показываем место под аудио-прогресс
+      setShowAudioPlaceholder(true);
     }
   }, [initialTaskId]);
+
+  // Показываем плейсхолдер при первой загрузке видео
+  useEffect(() => {
+    if (isDownloadComplete && originalVideoUrl) {
+      setShowAudioPlaceholder(true);
+    }
+  }, [isDownloadComplete, originalVideoUrl]);
 
   // ===========================
   // Очистка objectURL при размонтировании
@@ -127,6 +144,8 @@ function DownloadFragment() {
     setOriginalVideoBlob(null);
     setOriginalVideoUrl("");
     setVideoTitle("");
+    setAudioTaskId(null);
+    setIsAudioDownloadComplete(false);
 
     try {
       const data = await api.downloadVideo(mediaUrl); // POST /download_video
@@ -269,6 +288,58 @@ function DownloadFragment() {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+  };
+
+  // ===========================
+  // Обработка запуска скачивания аудио
+  // ===========================
+  const handleDownloadAudio = async () => {
+    if (!originalTaskId) {
+      alert("No video loaded.");
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      setAudioTaskId(null);
+      setIsAudioDownloadComplete(false);
+      
+      // Просто передаем originalTaskId
+      const audioTaskId = await startAudioDownload_from_player_page(originalTaskId);
+      
+      if (audioTaskId) {
+        setAudioTaskId(audioTaskId);
+      } else {
+        throw new Error("Failed to start audio download");
+      }
+    } catch (err) {
+      setError(`Error downloading audio: ${err.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ===========================
+  // Скачивание аудио файла
+  // ===========================
+  const handleAudioFileDownload = async () => {
+    if (!audioTaskId) {
+      alert("No audio task ID available");
+      return;
+    }
+    
+    try {
+      await downloadAudioFile_from_player_page(audioTaskId);
+    } catch (err) {
+      setError(`Error downloading audio file: ${err.message}`);
+    }
+  };
+
+  // ===========================
+  // Обработчик завершения скачивания аудио
+  // ===========================
+  const handleAudioDownloadComplete = () => {
+    setIsAudioDownloadComplete(true);
   };
 
   // ===========================
@@ -428,41 +499,27 @@ function DownloadFragment() {
               deleteOriginal={deleteOriginal}
               onDeleteOriginalChange={setDeleteOriginal}
               onPreviewSegment={timeControls.previewSegment}
-              // Кнопка "Download" для полного видео
               onDownloadVideo={downloadFullVideo}
-              // Кнопка "Cut Video"
+              onDownloadAudio={handleDownloadAudio}
               onCutVideo={handleCutVideo}
+              onDownloadFragment={downloadFragmentVideo}
+              fragmentStatus={fragmentTaskId ? fragmentStatus : null}
+              fragmentTaskId={fragmentTaskId}
             />
+            
+            {/* Резервируем место для AudioDownloadStatus постоянно */}
+            <div className="mt-3" style={{ minHeight: showAudioPlaceholder ? "70px" : "0", transition: "min-height 0.3s ease" }}>
+              {audioTaskId ? (
+                <AudioDownloadStatus
+                  taskId={audioTaskId}
+                  isComplete={isAudioDownloadComplete}
+                  onDownloadClick={handleAudioFileDownload}
+                  onDownloadComplete={handleAudioDownloadComplete}
+                  apiEndpoint="download_audio_status"
+                />
+              ) : null}
+            </div>
           </div>
-        </div>
-      )}
-
-      {/* Блок «Статус обрезки» с возможным спиннером 
-              Когда fragmentStatus = PENDING/PROGRESS -> показываем индикатор
-              Когда fragmentStatus = SUCCESS -> показываем кнопку Download Fragment
-          */}
-      {fragmentTaskId && (
-        <div className="mt-3 p-3 border rounded">
-          <h5>Cut fragment status:</h5>
-
-          {(fragmentStatus === "PENDING" || fragmentStatus === "PROGRESS") && (
-            <div className="d-flex align-items-center">
-              <div className="spinner-border text-success me-2" role="status" />
-              <span>Processing fragment...</span>
-            </div>
-          )}
-
-          {fragmentStatus === "FAILURE" && (
-            <div className="text-danger">
-              Error occurred while cutting fragment. See logs.
-            </div>
-          )}
-
-          {fragmentStatus === "SUCCESS" && (
-            <button className="btn btn-success" onClick={downloadFragmentVideo}>
-              Download Fragment
-            </button>
-          )}
         </div>
       )}
 

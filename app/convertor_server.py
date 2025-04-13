@@ -7,7 +7,7 @@ import sys
 from flask import Flask, request, jsonify, send_from_directory,send_file,Response,redirect, url_for
 import os
 # from .tasks import triger_download
-from app.tasks import triger_download_audio,transcribe_audio_task,download_video_task,extract_fragment_
+from app.tasks import triger_download_audio,transcribe_audio_task,download_video_task,extract_fragment_,extract_audio_from_video
 from app.youtube_service import (
     fetch_channel_videos, 
     fetch_playlist_videos, 
@@ -566,6 +566,80 @@ def download_audio_endpoint():
         "task_id": task.id
     }), 202
 
+@app.route('/download_audio_from_player_page', methods=['POST','GET'])
+@jwt_required()
+def download_audio_from_player_page():
+    """
+    1) Принимает JSON: {"task_id": "..."} - ID задачи скачанного видео
+    2) Запускает Celery-задачу на извлечение аудио из уже скачанного видео
+    3) Возвращает task_id и статус 202.
+    """
+    user_id = get_jwt_identity()
+    data = request.get_json() or {}
+
+    # Получаем task_id видео, из которого нужно извлечь аудио
+    task_id = data.get('task_id')
+    if not task_id:
+        return jsonify({"error": "task_id is required"}), 400
+
+    # Получаем информацию о задаче скачивания видео
+    video_task = AsyncResult(task_id, app=celery)
+    logger.debug(f'download_audio_endpoint: video_task state:{video_task.state} result:{video_task.result}')
+    
+    # Проверяем, что задача скачивания видео успешно завершена
+    if video_task.state != 'SUCCESS':
+        return jsonify({"error": f"Видео не было успешно скачано. Текущий статус: {video_task.state}"}), 400
+
+    # Получаем путь к видеофайлу из результата задачи
+    result = video_task.result or {}
+    video_path = result.get('file_path')
+    
+    # Проверяем, что файл существует
+    if not video_path or not os.path.exists(video_path):
+        return jsonify({"error": "Видеофайл не найден на диске"}), 404
+    
+    # Запускаем Celery-задачу на извлечение аудио
+    task = extract_audio_from_video.apply_async(args=[video_path, user_id, task_id])
+
+    return jsonify({
+        "message": "Аудио извлекается",
+        "task_id": task.id
+    }), 202
+
+@app.route('/get_downloaded_audio_from_player_page/<task_id>', methods=['GET'])
+@jwt_required()
+def get_downloaded_audio_from_player_page(task_id):
+    """
+    Возвращает извлеченный аудиофайл.
+    
+    :param task_id: ID задачи извлечения аудио
+    :return: Аудиофайл для скачивания
+    """
+    user_id = get_jwt_identity()
+    task = AsyncResult(task_id, app=celery)
+    
+    if task.state != 'SUCCESS':
+        return jsonify({"error": f"Задача не в состоянии SUCCESS, а {task.state}"}), 400
+
+    result = task.result or {}
+    audio_path = result.get('audio_file_path')
+    
+    if not audio_path or not os.path.exists(audio_path):
+        return jsonify({"error": "Аудиофайл не найден на диске"}), 404
+    
+    # Проверка, что файл принадлежит пользователю (опционально)
+    if result.get('user_id') != user_id:
+        return jsonify({"error": "Доступ запрещен"}), 403
+    
+    filename = os.path.basename(audio_path)
+    
+    # Отправляем файл клиенту для скачивания
+    return send_file(
+        audio_path,
+        mimetype='audio/mpeg',
+        as_attachment=True,
+        download_name=filename
+    )
 
 @app.route('/download_audio_status/<task_id>', methods=['GET'])
 @jwt_required()
@@ -650,7 +724,6 @@ def list_video_qualities():
 
         # Упрощенные параметры для yt_dlp
         ydl_opts = {
-            'cookiefile': '/app/app/www.youtube.com_cookies.txt',
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.75 Safari/537.36',
             'quiet': True,
             'nocheckcertificate': True,
@@ -832,35 +905,6 @@ def download_video_status(task_id):
         }), 200
     else:
         return jsonify({"status": task.state}), 202
-
-
-# @app.route('/get_downloaded_video/<task_id>', methods=['GET'])
-# @jwt_required()
-# def get_downloaded_video(task_id):
-#     """
-#     Возвращает готовый видеофайл (если задача в SUCCESS).
-#     """
-#     task = AsyncResult(task_id, app=celery)
-#     logger.error(f'get_downloaded_videostate:{task.state} result:{task.result}')
-#     if task.state != 'SUCCESS':
-#         return jsonify({"error": f"Задача не в состоянии SUCCESS, а {task.state}"}), 400
-
-#     result = task.result or {}
-#     video_path = result.get('file_path')
-#     print("video_path:",video_path)
-#     logger.error(f"get_downloaded_video , video_path: {video_path}, result:{result}")
-#     if not video_path or not os.path.exists(video_path):
-#         return jsonify({"error": "Файл не найден на диске"}), 404
-    
-#     filename = os.path.basename(video_path)
-
-#     return send_file(
-#         video_path,
-#         as_attachment=True,
-#         download_name=filename,
-#         etag=True,
-#         max_age=0
-#     )
 
 
     

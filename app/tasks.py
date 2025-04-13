@@ -9,7 +9,8 @@ from app.convertor import (
     get_file_size_mb,
     extract_video_fragment,
     download_audio,
-    download_video
+    download_video,
+    extract_audio
 )
 import os
 import sys
@@ -372,7 +373,45 @@ def download_video_task(self, video_url: str, format_id: str, user_id: str):
 
 
 
-
+@celery.task(bind=True, name="app.tasks.extract_audio_from_video")
+def extract_audio_from_video(self, video_path, user_id, original_task_id):
+    """
+    Извлекает аудио из видеофайла.
+    
+    :param self: Celery task instance
+    :param video_path: Путь к видеофайлу
+    :param user_id: ID пользователя
+    :param original_task_id: ID задачи скачивания видео
+    :return: Словарь с путем к аудиофайлу и другой информацией
+    """
+    
+    try:
+        self.update_state(state='PROGRESS', meta={'percent': 10, 'step': 'Начало извлечения аудио'})
+        
+        # Проверяем существование файла
+        if not os.path.exists(video_path):
+            raise FileNotFoundError(f"Видеофайл не найден: {video_path}")
+        
+        # Извлекаем аудио из видео
+        self.update_state(state='PROGRESS', meta={'percent': 30, 'step': 'Извлечение аудио'})
+        audio_path = extract_audio(video_path, output_ext="mp3")
+        
+        self.update_state(state='PROGRESS', meta={'percent': 90, 'step': 'Завершение'})
+        
+        # Проверяем, что аудиофайл успешно создан
+        if not os.path.exists(audio_path):
+            raise RuntimeError(f"Не удалось создать аудиофайл: {audio_path}")
+        
+        # Возвращаем результат
+        return {
+            'audio_file_path': audio_path,
+            'user_id': user_id,
+            'original_task_id': original_task_id
+        }
+        
+    except Exception as e:
+        logger.exception(f"Ошибка при извлечении аудио: {str(e)}")
+        raise
 
 @celery.task(bind=True, name="app.tasks.extract_fragment_")
 def extract_fragment_(self, file_path: str, start_time: float, end_time: float, user_id: str, delete_original: bool = False):

@@ -681,6 +681,38 @@ def extract_video_fragment(input_video: str, output_fragment: str, start_time: s
         logger.error(f"FFmpeg stderr: {e.stderr.decode()}")
         logger.exception("FFmpeg failed to extract video fragment.")
         raise RuntimeError("Video fragment extraction failed.") from e
+    
+
+def extract_audio(input_file: str, output_ext: str = "mp3") -> str:
+    """
+    Extract audio from a video file.
+
+    :param input_file: Path to the input video file.
+    :param output_ext: e.g. 'mp3', 'wav', 'aac', etc.
+    :return: Path to the extracted audio file.
+    """
+
+
+    logger = logging.getLogger(__name__)
+    
+    base, _ = os.path.splitext(input_file)
+    output_file = f"{base}.{output_ext}"
+
+    if os.path.exists(output_file):
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = f"{base}_{timestamp}.{output_ext}"
+
+    cmd = ["ffmpeg", "-y", "-i", input_file, "-vn", "-acodec", "libmp3lame", output_file]
+    logger.debug(f"FFmpeg command: {' '.join(cmd)}")
+
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        logger.exception("FFmpeg audio extraction failed!")
+        raise RuntimeError("Audio extraction failed.") from e
+
+    logger.info(f"Audio extraction successful. Output file: {output_file}")
+    return output_file
         
 if __name__ == "__main__":
     main()

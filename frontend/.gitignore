@@ -30,3 +30,5 @@ frontend/.eslintcache
 frontend/node_modules/
 frontend/*.log
 frontend/.vite/
+
+*storybook.log
