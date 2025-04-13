@@ -35,55 +35,57 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="container my-5">
-      <div className="card">
-        <div className="row g-0">
-          <div className="col-md-6">
-            <img 
-              src={loginImage} 
-              alt="login form" 
-              className="rounded-start w-100"
-            />
-          </div>
-          <div className="col-md-6">
-            <div className="card-body d-flex flex-column">
-              
-              <h5 className="fw-normal my-4 pb-3" style={{letterSpacing: '1px'}}>
-                Sign into your account
-              </h5>
-              
-              <form onSubmit={handleSubmit}>
-                <div className="form-outline mb-4">
-                  <input 
-                    type="text" 
-                    id="formControlLg" 
-                    className="form-control form-control-lg"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    required
-                  />
-                  <label className="form-label" htmlFor="formControlLg">Username</label>
-                </div>
+    <div className="login-container">
+      <div className="container my-5">
+        <div className="card">
+          <div className="row g-0">
+            <div className="col-md-6">
+              <img 
+                src={loginImage} 
+                alt="login form" 
+                className="rounded-start w-100"
+              />
+            </div>
+            <div className="col-md-6">
+              <div className="card-body d-flex flex-column">
                 
-                <div className="form-outline mb-4">
-                  <input 
-                    type="password" 
-                    id="formControlLg2" 
-                    className="form-control form-control-lg"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                  <label className="form-label" htmlFor="formControlLg2">Password</label>
-                </div>
+                <h5 className="fw-normal my-4 pb-3" style={{letterSpacing: '1px'}}>
+                  Sign into your account
+                </h5>
                 
-                <button 
-                  type="submit" 
-                  className="btn btn-dark btn-lg mb-4 px-5"
-                >
-                  Login
-                </button>
-              </form>
+                <form onSubmit={handleSubmit}>
+                  <div className="form-outline mb-4">
+                    <input 
+                      type="text" 
+                      id="formControlLg" 
+                      className="form-control form-control-lg"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      required
+                    />
+                    <label className="form-label" htmlFor="formControlLg">Username</label>
+                  </div>
+                  
+                  <div className="form-outline mb-4">
+                    <input 
+                      type="password" 
+                      id="formControlLg2" 
+                      className="form-control form-control-lg"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                    />
+                    <label className="form-label" htmlFor="formControlLg2">Password</label>
+                  </div>
+                  
+                  <button 
+                    type="submit" 
+                    className="btn btn-dark btn-lg mb-4 px-5"
+                  >
+                    Login
+                  </button>
+                </form>
+              </div>
             </div>
           </div>
         </div>

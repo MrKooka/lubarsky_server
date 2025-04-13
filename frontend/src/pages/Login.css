@@ -3,7 +3,8 @@ body {
   background-color: #f3f3f3;
 }
 
-.container {
+/* Ограничиваем область видимости стилей селектором .login-container */
+.login-container .container {
   max-width: 1140px;
   width: 100%;
   padding-right: 15px;
@@ -12,12 +13,12 @@ body {
   margin-left: auto;
 }
 
-.my-5 {
+.login-container .my-5 {
   margin-top: 3rem !important;
   margin-bottom: 3rem !important;
 }
 
-.card {
+.login-container .card {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -29,97 +30,97 @@ body {
   border-radius: 0.25rem;
 }
 
-.row {
+.login-container .row {
   display: flex;
   flex-wrap: wrap;
   margin-right: -15px;
   margin-left: -15px;
 }
 
-.g-0 {
+.login-container .g-0 {
   margin-right: 0;
   margin-left: 0;
 }
 
-.g-0 > .col,
-.g-0 > [class*="col-"] {
+.login-container .g-0 > .col,
+.login-container .g-0 > [class*="col-"] {
   padding-right: 0;
   padding-left: 0;
 }
 
-.col-md-6 {
+.login-container .col-md-6 {
   flex: 0 0 auto;
   width: 50%;
 }
 
-.card-body {
+.login-container .card-body {
   flex: 1 1 auto;
   padding: 1.5rem;
 }
 
-.d-flex {
+.login-container .d-flex {
   display: flex !important;
 }
 
-.flex-column {
+.login-container .flex-column {
   flex-direction: column !important;
 }
 
-.flex-row {
+.login-container .flex-row {
   flex-direction: row !important;
 }
 
-.justify-content-start {
+.login-container .justify-content-start {
   justify-content: flex-start !important;
 }
 
-.mt-2 {
+.login-container .mt-2 {
   margin-top: 0.5rem !important;
 }
 
-.me-3 {
+.login-container .me-3 {
   margin-right: 1rem !important;
 }
 
-.me-1 {
+.login-container .me-1 {
   margin-right: 0.25rem !important;
 }
 
-.mb-0 {
+.login-container .mb-0 {
   margin-bottom: 0 !important;
 }
 
-.mb-4 {
+.login-container .mb-4 {
   margin-bottom: 1.5rem !important;
 }
 
-.mb-5 {
+.login-container .mb-5 {
   margin-bottom: 3rem !important;
 }
 
-.my-4 {
+.login-container .my-4 {
   margin-top: 1.5rem !important;
   margin-bottom: 1.5rem !important;
 }
 
-.pb-3 {
+.login-container .pb-3 {
   padding-bottom: 1rem !important;
 }
 
-.pb-lg-2 {
+.login-container .pb-lg-2 {
   padding-bottom: 0.5rem !important;
 }
 
-.px-5 {
+.login-container .px-5 {
   padding-left: 3rem !important;
   padding-right: 3rem !important;
 }
 
-.w-100 {
+.login-container .w-100 {
   width: 100% !important;
 }
 
-.h1 {
+.login-container .h1 {
   font-size: 2.5rem;
   margin-top: 0;
   margin-bottom: 0.5rem;
@@ -127,32 +128,33 @@ body {
   line-height: 1.2;
 }
 
-.h5, h5 {
+.login-container .h5, 
+.login-container h5 {
   font-size: 1.25rem;
 }
 
-.fw-bold {
+.login-container .fw-bold {
   font-weight: 700 !important;
 }
 
-.fw-normal {
+.login-container .fw-normal {
   font-weight: 400 !important;
 }
 
-.small {
+.login-container .small {
   font-size: 0.875em;
 }
 
-.text-muted {
+.login-container .text-muted {
   color: #6c757d !important;
 }
 
-.rounded-start {
+.login-container .rounded-start {
   border-top-left-radius: 0.25rem !important;
   border-bottom-left-radius: 0.25rem !important;
 }
 
-.form-control {
+.login-container .form-control {
   display: block;
   width: 100%;
   padding: 0.375rem 0.75rem;
@@ -168,23 +170,24 @@ body {
   transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
 }
 
-.form-control-lg {
+.login-container .form-control-lg {
   min-height: calc(1.5em + 1rem + 2px);
   padding: 0.5rem 1rem;
   font-size: 1.25rem;
   border-radius: 0.3rem;
 }
 
-.form-outline {
+.login-container .form-outline {
   position: relative;
 }
 
-.form-label {
+.login-container .form-label {
   margin-bottom: 0.5rem;
   color: #757575;
 }
 
-.btn {
+/* Обновленный селектор для кнопок */
+.login-container .btn {
   display: inline-block;
   font-weight: 400;
   line-height: 1.5;
@@ -202,38 +205,38 @@ body {
   transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
 }
 
-.btn-dark {
+.login-container .btn-dark {
   color: #fff;
   background-color: #212529;
   border-color: #212529;
 }
 
-.btn-dark:hover {
+.login-container .btn-dark:hover {
   color: #fff;
   background-color: #1c1f23;
   border-color: #1a1e21;
 }
 
-.btn-lg {
+.login-container .btn-lg {
   padding: 0.5rem 1rem;
   font-size: 1.25rem;
   border-radius: 0.3rem;
 }
 
 @media (min-width: 768px) {
-  .col-md-6 {
+  .login-container .col-md-6 {
     flex: 0 0 auto;
     width: 50%;
   }
 }
 
 /* Дополнительные стили для иконок (если у вас не подключен Font Awesome) */
-.fas {
+.login-container .fas {
   font-family: 'Font Awesome 5 Free';
   font-weight: 900;
 }
 
 /* Симуляция иконки, если Font Awesome недоступен */
-.fa-cubes:before {
+.login-container .fa-cubes:before {
   content: "▣";
 }
